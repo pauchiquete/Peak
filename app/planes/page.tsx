@@ -1,230 +1,186 @@
-"use client";
-
 import Link from "next/link";
 
 const plans = [
   {
-    name: "Básico",
-    price: "$XXX",
-    period: "/ mes",
-    tag: null,
-    featured: false,
-    description: "Ideal para comenzar con una rutina estructurada y apoyo profesional.",
+    name: "Mensual",
+    price: "$1,600",
+    period: "1 mes",
+    description: "Ideal para comenzar y probar el método con seguimiento real.",
     features: [
-      "Rutina mensual personalizada",
-      "Ajuste cada 4 semanas",
-      "Guía de ejercicios en video",
-      "Soporte por WhatsApp",
+      "Rutinas semanales",
+      "Seguimiento personalizado",
+      "Ajustes según progreso",
+      "Acceso a plataforma",
     ],
   },
   {
-    name: "Intermedio",
-    price: "$XXX",
-    period: "/ mes",
-    tag: "Más popular",
+    name: "Bimestral",
+    price: "$2,100",
+    period: "2 meses",
+    description: "Mejor para construir constancia y notar cambios visibles.",
+    features: [
+      "8 semanas de entrenamiento",
+      "Seguimiento 24/7",
+      "Chequeo mensual",
+      "Acceso a plataforma",
+    ],
     featured: true,
-    description: "Para quienes quieren resultados reales, rápidos y sostenibles.",
-    features: [
-      "Todo lo del plan Básico",
-      "Seguimiento semanal 1 a 1",
-      "Ajuste de rutina semanal",
-      "Asesoría nutricional básica",
-      "Check-in de progreso mensual",
-    ],
   },
   {
-    name: "Personalizado",
-    price: "A consultar",
-    period: "",
-    tag: "Premium",
-    featured: false,
-    description: "Coaching completo adaptado 100% a tu cuerpo y estilo de vida.",
+    name: "Trimestral",
+    price: "$2,500",
+    period: "3 meses",
+    description: "La mejor opción para un proceso completo y medible.",
     features: [
-      "Todo lo del plan Intermedio",
-      "Sesiones en vivo (Zoom/Meet)",
-      "Plan nutricional completo",
-      "Acceso prioritario al coach",
-      "Seguimiento diario",
+      "12 semanas de entrenamiento",
+      "Progresión completa",
+      "Mayor estructura",
+      "Acceso a plataforma",
     ],
   },
 ];
 
-export default function Planes() {
+export default function PlanesPage() {
   return (
-    <main style={{ minHeight: "100svh", paddingTop: "100px", paddingBottom: "100px" }}>
-      <div style={{ maxWidth: "680px", margin: "0 auto", padding: "0 24px" }}>
+    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
+      <section className="mx-auto max-w-7xl">
+        <div className="max-w-2xl">
+          <p className="text-xs font-black uppercase tracking-[0.3em] text-[var(--muted)]">
+            Planes
+          </p>
 
-        {/* ── Header ── */}
-        <div style={{ textAlign: "center", marginBottom: "64px" }}>
-          <span
-            style={{
-              display: "inline-block",
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              padding: "8px 20px",
-              borderRadius: "999px",
-              marginBottom: "24px",
-              background: "var(--card-alt)",
-              color: "var(--muted)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            Elige tu plan
-          </span>
-          <h1
-            className="font-display font-black"
-            style={{ fontSize: "clamp(2.4rem, 8vw, 3.5rem)", color: "var(--foreground)", lineHeight: 1.1, marginBottom: "16px" }}
-          >
-            Inversión en ti
+          <h1 className="mt-5 text-5xl font-black leading-[0.9] tracking-tight sm:text-6xl">
+            Elige el tiempo.
+            <br />
+            El plan se adapta a ti.
           </h1>
-          <p style={{ color: "var(--muted)", fontSize: "15px", lineHeight: 1.7 }}>
-            Todos los planes incluyen acceso a la app de PLT y atención personalizada.
+
+          <p className="mt-6 text-base leading-7 text-[var(--muted)] sm:text-lg">
+            Todos los planes incluyen entrenamiento personalizado, seguimiento y
+            acceso a la plataforma. La diferencia está en el tiempo de
+            acompañamiento.
           </p>
         </div>
 
-        {/* ── Cards ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div className="mt-10 grid gap-4 lg:grid-cols-3">
           {plans.map((plan) => (
-            <div
+            <article
               key={plan.name}
-              style={{
-                position: "relative",
-                borderRadius: "24px",
-                padding: "40px",
-                ...(plan.featured
-                  ? { background: "#0d0d0d", border: "none" }
-                  : { background: "var(--card-alt)", border: "1px solid var(--border)" }),
-              }}
+              className={`
+                relative
+                overflow-hidden
+                rounded-[30px]
+                border
+                p-7
+                backdrop-blur-xl
+                ${
+                  plan.featured
+                    ? "border-[var(--text)] bg-[var(--button-bg)] text-[var(--button-text)]"
+                    : "border-[var(--border)] bg-[var(--surface)] text-[var(--text)]"
+                }
+              `}
             >
-              {/* Badge */}
-              {plan.tag && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: "24px",
-                    right: "24px",
-                    fontSize: "10px",
-                    fontWeight: 800,
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
-                    padding: "6px 14px",
-                    borderRadius: "999px",
-                    ...(plan.featured
-                      ? { background: "#f5f0eb", color: "#0d0d0d" }
-                      : { background: "var(--foreground)", color: "var(--background)" }),
-                  }}
-                >
-                  {plan.tag}
-                </span>
+              {plan.featured && (
+                <div className="mb-5 w-fit rounded-full bg-[var(--button-text)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--button-bg)]">
+                  Recomendado
+                </div>
               )}
 
-              {/* Nombre */}
-              <h2
-                className="font-display font-black"
-                style={{
-                  fontSize: "1.7rem",
-                  marginBottom: "10px",
-                  color: plan.featured ? "#f5f0eb" : "var(--foreground)",
-                }}
+              <p
+                className={`text-xs font-black uppercase tracking-[0.28em] ${
+                  plan.featured ? "opacity-55" : "text-[var(--muted)]"
+                }`}
               >
                 {plan.name}
+              </p>
+
+              <h2 className="mt-6 text-5xl font-black tracking-tight">
+                {plan.price}
               </h2>
 
-              {/* Descripción */}
               <p
-                style={{
-                  fontSize: "14px",
-                  lineHeight: 1.65,
-                  marginBottom: "28px",
-                  color: plan.featured ? "rgba(245,240,235,0.52)" : "var(--muted)",
-                }}
+                className={`mt-2 text-sm font-black uppercase tracking-[0.2em] ${
+                  plan.featured ? "opacity-55" : "text-[var(--muted)]"
+                }`}
+              >
+                {plan.period}
+              </p>
+
+              <p
+                className={`mt-5 text-sm leading-7 ${
+                  plan.featured ? "opacity-65" : "text-[var(--muted)]"
+                }`}
               >
                 {plan.description}
               </p>
 
-              {/* Precio */}
-              <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "32px" }}>
-                <span
-                  className="font-display font-black"
-                  style={{ fontSize: "clamp(2.2rem, 7vw, 3rem)", color: plan.featured ? "#f5f0eb" : "var(--foreground)" }}
-                >
-                  {plan.price}
-                </span>
-                {plan.period && (
-                  <span style={{ fontSize: "14px", fontWeight: 600, color: plan.featured ? "rgba(245,240,235,0.4)" : "var(--muted)" }}>
-                    {plan.period}
-                  </span>
-                )}
+              <div
+                className={`my-7 h-px ${
+                  plan.featured
+                    ? "bg-[var(--button-text)]/20"
+                    : "bg-[var(--border)]"
+                }`}
+              />
+
+              <div className="space-y-3">
+                {plan.features.map((feature) => (
+                  <p
+                    key={feature}
+                    className={`text-sm font-bold ${
+                      plan.featured ? "opacity-75" : "text-[var(--muted)]"
+                    }`}
+                  >
+                    ✓ {feature}
+                  </p>
+                ))}
               </div>
 
-              {/* Features */}
-              <ul style={{ display: "flex", flexDirection: "column", gap: "14px", marginBottom: "36px" }}>
-                {plan.features.map((f) => (
-                  <li key={f} style={{ display: "flex", alignItems: "flex-start", gap: "12px", fontSize: "14px" }}>
-                    <svg
-                      width="16" height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke={plan.featured ? "rgba(245,240,235,0.55)" : "var(--foreground)"}
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{ flexShrink: 0, marginTop: "2px" }}
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    <span style={{ color: plan.featured ? "rgba(245,240,235,0.72)" : "var(--muted)", lineHeight: 1.5 }}>
-                      {f}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-
-              {/* CTA */}
               <Link
                 href="/contacto"
-                className="font-bold tracking-widest uppercase transition-all duration-200 hover:scale-[1.02] active:scale-95"
-                style={{
-                  display: "block",
-                  textAlign: "center",
-                  fontSize: "12px",
-                  padding: "18px",
-                  borderRadius: "16px",
-                  ...(plan.featured
-                    ? { background: "#f5f0eb", color: "#0d0d0d" }
-                    : { background: "var(--foreground)", color: "var(--background)" }),
-                }}
+                className={`
+                  mt-8
+                  flex
+                  items-center
+                  justify-center
+                  rounded-2xl
+                  px-6
+                  py-4
+                  text-center
+                  text-sm
+                  font-black
+                  uppercase
+                  tracking-[0.16em]
+                  transition
+                  active:scale-95
+                  ${
+                    plan.featured
+                      ? "bg-[var(--button-text)] text-[var(--button-bg)]"
+                      : "bg-[var(--button-bg)] text-[var(--button-text)]"
+                  }
+                `}
               >
-                Quiero este plan
+                Agendar
               </Link>
-            </div>
+            </article>
           ))}
         </div>
 
-        {/* Nota */}
-        <p
-          style={{
-            textAlign: "center",
-            fontSize: "13px",
-            marginTop: "40px",
-            lineHeight: 1.7,
-            color: "var(--muted)",
-          }}
-        >
-          ¿Tienes dudas sobre cuál elegir?{" "}
-          <a
-            href="https://wa.me/5215540387231"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "var(--foreground)", fontWeight: 700, textDecoration: "underline", textUnderlineOffset: "3px" }}
-          >
-            Escríbenos por WhatsApp
-          </a>{" "}
-          y te ayudamos sin compromiso.
-        </p>
-      </div>
+        <div className="mt-6 rounded-[30px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl">
+          <p className="text-xs font-black uppercase tracking-[0.3em] text-[var(--muted)]">
+            Activación
+          </p>
+
+          <h2 className="mt-4 text-3xl font-black">
+            El coach activa tu cuenta.
+          </h2>
+
+          <p className="mt-4 max-w-3xl text-sm leading-7 text-[var(--muted)]">
+            Después de confirmar el plan directamente con el coach, se crea tu
+            acceso a la plataforma para que puedas ver tus rutinas, ejercicios y
+            videos.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }

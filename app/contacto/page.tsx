@@ -1,212 +1,129 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent } from "react";
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "16px 18px",
-  borderRadius: "14px",
-  background: "var(--background)",
-  color: "var(--foreground)",
-  border: "1.5px solid var(--border)",
-  fontSize: "15px",
-  fontFamily: "'Syne', system-ui, sans-serif",
-  outline: "none",
-  transition: "border-color 0.2s",
-  appearance: "none",
-};
+const phone = "525548792525";
 
-export default function Contacto() {
-  const [status, setStatus] = useState<"idle" | "sending" | "ok" | "error">("idle");
+export default function ContactoPage() {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setStatus("sending");
-    const form = e.currentTarget;
-    const res = await fetch("https://formspree.io/f/xdaldyzb", {
-      method: "POST",
-      body: new FormData(form),
-      headers: { Accept: "application/json" },
-    });
-    if (res.ok) { setStatus("ok"); form.reset(); }
-    else setStatus("error");
+    const form = new FormData(event.currentTarget);
+
+    const nombre = form.get("nombre");
+    const objetivo = form.get("objetivo");
+    const mensaje = form.get("mensaje");
+
+    const text = `Hola Sebastián, soy ${nombre}. Me interesa iniciar entrenamiento. Mi objetivo es: ${objetivo}. ${mensaje ? `Mensaje: ${mensaje}` : ""}`;
+
+    window.open(
+      `https://wa.me/${phone}?text=${encodeURIComponent(text)}`,
+      "_blank"
+    );
   }
 
   return (
-    <main style={{ minHeight: "100svh", paddingTop: "100px", paddingBottom: "100px" }}>
-      <div style={{ maxWidth: "560px", margin: "0 auto", padding: "0 24px" }}>
-
-        {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: "56px" }}>
-          <span
-            style={{
-              display: "inline-block",
-              fontSize: "11px",
-              fontWeight: 700,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              padding: "8px 20px",
-              borderRadius: "999px",
-              marginBottom: "24px",
-              background: "var(--card-alt)",
-              color: "var(--muted)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            Hablemos
-          </span>
-          <h1
-            className="font-display font-black"
-            style={{ fontSize: "clamp(2.2rem, 7vw, 3.2rem)", color: "var(--foreground)", lineHeight: 1.1, marginBottom: "16px" }}
-          >
-            Agenda tu asesoría
-          </h1>
-          <p style={{ color: "var(--muted)", fontSize: "15px", lineHeight: 1.75 }}>
-            Primera consulta gratuita y sin compromiso.
-            Te contactamos en menos de 24 horas.
+    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
+      <section className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.9fr_1.1fr]">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.3em] text-[var(--muted)]">
+            Contacto
           </p>
+
+          <h1 className="mt-5 text-5xl font-black leading-[0.9] tracking-tight sm:text-6xl">
+            Agenda tu valoración.
+          </h1>
+
+          <p className="mt-7 max-w-xl text-base leading-8 text-[var(--muted)] sm:text-lg">
+            Déjanos tus datos y abre una conversación directa por WhatsApp para
+            iniciar tu proceso.
+          </p>
+
+          <div className="mt-8 grid gap-3">
+            <a
+              href={`https://wa.me/${phone}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl"
+            >
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+                WhatsApp
+              </p>
+              <p className="mt-3 text-2xl font-black">5548792525</p>
+            </a>
+
+            <a
+              href="https://instagram.com/sebglezcoach"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl"
+            >
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+                Instagram
+              </p>
+              <p className="mt-3 text-2xl font-black">@sebglezcoach</p>
+            </a>
+          </div>
         </div>
 
-        {/* Éxito */}
-        {status === "ok" ? (
-          <div
-            style={{
-              textAlign: "center",
-              padding: "72px 40px",
-              borderRadius: "24px",
-              background: "var(--card-alt)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <span style={{ fontSize: "52px" }}></span>
-            <h2
-              className="font-display font-black"
-              style={{ fontSize: "1.6rem", color: "var(--foreground)", marginTop: "24px", marginBottom: "12px" }}
-            >
-              ¡Mensaje enviado!
-            </h2>
-            <p style={{ color: "var(--muted)", fontSize: "14px", lineHeight: 1.7 }}>
-              Te contactaremos pronto por WhatsApp. ¡Nos vemos pronto!
-            </p>
-          </div>
-        ) : (
-          <form
-            onSubmit={handleSubmit}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "20px",
-              background: "var(--card-alt)",
-              border: "1px solid var(--border)",
-              borderRadius: "24px",
-              padding: "40px",
-            }}
-          >
-            {/* Nombre */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <label style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--muted)" }}>
-                Nombre completo
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-[34px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl sm:p-8"
+        >
+          <div className="grid gap-5">
+            <div>
+              <label className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+                Nombre
               </label>
+
               <input
                 name="nombre"
+                required
                 placeholder="Tu nombre"
-                required
-                style={inputStyle}
-                onFocus={e => (e.target.style.borderColor = "var(--foreground)")}
-                onBlur={e => (e.target.style.borderColor = "var(--border)")}
+                className="mt-3 w-full rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none"
               />
             </div>
 
-            {/* WhatsApp */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <label style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--muted)" }}>
-                WhatsApp
-              </label>
-              <input
-                name="telefono"
-                placeholder="+52 55 0000 0000"
-                required
-                type="tel"
-                style={inputStyle}
-                onFocus={e => (e.target.style.borderColor = "var(--foreground)")}
-                onBlur={e => (e.target.style.borderColor = "var(--border)")}
-              />
-            </div>
-
-            {/* Objetivo */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <label style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--muted)" }}>
+            <div>
+              <label className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
                 Objetivo
               </label>
+
               <select
                 name="objetivo"
-                style={inputStyle}
-                onFocus={e => (e.target.style.borderColor = "var(--foreground)")}
-                onBlur={e => (e.target.style.borderColor = "var(--border)")}
+                required
+                className="mt-3 w-full rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none"
               >
-                <option value="Perder grasa">Perder grasa</option>
-                <option value="Ganar músculo">Ganar músculo</option>
-                <option value="Recomposición corporal">Recomposición corporal</option>
-                <option value="Mejorar condición">Mejorar condición física</option>
+                <option>Perder grasa</option>
+                <option>Ganar músculo</option>
+                <option>Definición muscular</option>
+                <option>Mejorar rendimiento</option>
+                <option>Rehabilitación / movilidad</option>
               </select>
             </div>
 
-            {/* Mensaje */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <label style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--muted)" }}>
-                Cuéntame sobre ti
+            <div>
+              <label className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+                Mensaje
               </label>
+
               <textarea
                 name="mensaje"
-                placeholder="¿Cuánto llevas entrenando? ¿Alguna lesión? ¿Disponibilidad de tiempo?"
-                rows={4}
-                style={{ ...inputStyle, resize: "none", lineHeight: 1.7 }}
-                onFocus={e => (e.target.style.borderColor = "var(--foreground)")}
-                onBlur={e => (e.target.style.borderColor = "var(--border)")}
+                rows={5}
+                placeholder="Cuéntanos un poco sobre ti..."
+                className="mt-3 w-full rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none"
               />
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
-              disabled={status === "sending"}
-              className="font-bold tracking-widest uppercase transition-all duration-200 hover:scale-[1.02] active:scale-95"
-              style={{
-                background: "var(--foreground)",
-                color: "var(--background)",
-                fontSize: "13px",
-                padding: "18px",
-                borderRadius: "14px",
-                marginTop: "8px",
-                cursor: status === "sending" ? "not-allowed" : "pointer",
-                opacity: status === "sending" ? 0.6 : 1,
-                border: "none",
-              }}
+              className="rounded-2xl bg-[var(--button-bg)] px-7 py-4 text-sm font-black uppercase tracking-[0.18em] text-[var(--button-text)] transition active:scale-95"
             >
-              {status === "sending" ? "Enviando..." : "Enviar mensaje →"}
+              Abrir WhatsApp
             </button>
-
-            {status === "error" && (
-              <p style={{ textAlign: "center", fontSize: "13px", color: "#ef4444" }}>
-                Hubo un error. Intenta de nuevo o escríbenos directo por WhatsApp.
-              </p>
-            )}
-          </form>
-        )}
-
-        {/* Link WA directo */}
-        <p style={{ textAlign: "center", fontSize: "13px", marginTop: "28px", color: "var(--muted)" }}>
-          ¿Prefieres escribir directo?{" "}
-          <a
-            href="https://wa.me/5215540387231"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "var(--foreground)", fontWeight: 700, textDecoration: "underline", textUnderlineOffset: "3px" }}
-          >
-            Escríbenos en WhatsApp
-          </a>
-        </p>
-      </div>
+          </div>
+        </form>
+      </section>
     </main>
   );
 }

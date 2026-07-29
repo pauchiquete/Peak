@@ -1,5 +1,5 @@
 export default function WhatsAppButton() {
-  const phone   = "5215540387231";
+  const phone   = "5215548792525";
   const message = "Hola! Vi tu página y me gustaría recibir información sobre los planes de entrenamiento.";
   const url     = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 
