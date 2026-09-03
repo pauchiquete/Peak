@@ -22,6 +22,7 @@ type WorkoutExerciseFromDb = {
   rest: string | null;
   rir: string | null;
   notes: string | null;
+  series_group_id?: string | null;
   exercise: Exercise | Exercise[] | null;
 };
 
@@ -88,16 +89,7 @@ export default async function ClientRoutinePage({ params }: PageProps) {
           .from("workout_exercises")
           .select(
             `
-            id,
-            workout_day_id,
-            exercise_id,
-            position,
-            sets,
-            reps,
-            weight,
-            rest,
-            rir,
-            notes,
+            *,
             exercise:exercises (
               id,
               name,
@@ -148,6 +140,7 @@ export default async function ClientRoutinePage({ params }: PageProps) {
 
     return {
       ...typedItem,
+      series_group_id: typedItem.series_group_id ?? null,
       exercise: normalizeExercise(typedItem.exercise),
     };
   });
