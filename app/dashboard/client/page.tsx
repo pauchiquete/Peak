@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/auth/LogoutButton";
 import ClientRoutineView from "@/components/dashboard/clients/ClientRoutineView";
 import Link from "next/link";
+import type { ExerciseProgressEntry } from "@/lib/exercise-progress";
 
 type Exercise = {
   id: string;
@@ -23,6 +24,7 @@ type WorkoutExerciseFromDb = {
   rest: string | null;
   rir: string | null;
   notes: string | null;
+  series_group_id?: string | null;
   exercise: Exercise | Exercise[] | null;
 };
 
@@ -150,16 +152,7 @@ export default async function ClientDashboardPage() {
           .from("workout_exercises")
           .select(
             `
-            id,
-            workout_day_id,
-            exercise_id,
-            position,
-            sets,
-            reps,
-            weight,
-            rest,
-            rir,
-            notes,
+            *,
             exercise:exercises (
               id,
               name,
@@ -202,9 +195,40 @@ export default async function ClientDashboardPage() {
 
     return {
       ...typedItem,
+      series_group_id: typedItem.series_group_id ?? null,
       exercise: normalizeExercise(typedItem.exercise),
     };
   });
+
+  const assignedExerciseIds = [
+    ...new Set(normalizedWorkoutExercises.map((item) => item.exercise_id)),
+  ];
+  const { data: progressData, error: progressError } =
+    assignedExerciseIds.length > 0
+      ? await supabase
+          .from("exercise_progress_logs")
+          .select(
+            "id, client_id, exercise_id, workout_exercise_id, weight_kg, reps, notes, recorded_on, created_at"
+          )
+          .eq("client_id", client.id)
+          .in("exercise_id", assignedExerciseIds)
+          .order("recorded_on", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(200)
+      : { data: [], error: null };
+  const initialProgressEntries = (progressData ?? []).map((entry) => ({
+    ...(entry as ExerciseProgressEntry),
+    weight_kg: Number(entry.weight_kg),
+    reps: entry.reps === null ? null : Number(entry.reps),
+  }));
+  const { data: reminderState, error: reminderStateError } =
+    assignedExerciseIds.length > 0 && !progressError
+      ? await supabase
+          .from("client_progress_reminder_state")
+          .select("last_prompted_at")
+          .eq("client_id", client.id)
+          .maybeSingle()
+      : { data: null, error: progressError };
 
   const daysWithExercises = (workoutDays ?? []).map((day) => {
     return {
@@ -229,7 +253,14 @@ export default async function ClientDashboardPage() {
           <LogoutButton />
         </div>
 
-        <ClientRoutineView client={client} days={daysWithExercises} />
+        <ClientRoutineView
+          client={client}
+          days={daysWithExercises}
+          initialProgressEntries={initialProgressEntries}
+          initialProgressPromptedAt={reminderState?.last_prompted_at ?? null}
+          progressStorageReady={!progressError}
+          progressReminderReady={!reminderStateError}
+        />
       </section>
     </main>
   );

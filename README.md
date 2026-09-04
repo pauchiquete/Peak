@@ -16,6 +16,13 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Actualizaciones de Supabase
+
+Ejecuta las actualizaciones desde el SQL Editor de Supabase antes de usar cada función:
+
+1. [`supabase/series-groups.sql`](supabase/series-groups.sql) activa biseries, triseries y grupos combinados.
+2. [`supabase/exercise-progress.sql`](supabase/exercise-progress.sql) activa la bitácora del cliente y los recordatorios quincenales.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

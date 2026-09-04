@@ -3,6 +3,14 @@
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import RoutineDayToggle from "@/components/dashboard/routines/RoutineDayToggle";
+import RoutineSeriesBlock from "@/components/dashboard/routines/RoutineSeriesBlock";
+import { sortWorkoutDays, WEEK_DAYS } from "@/lib/workout-days";
+import {
+  buildWorkoutExerciseBlocks,
+  flattenWorkoutExerciseBlocks,
+  getSeriesLabel,
+} from "@/lib/workout-exercise-groups";
 
 type ClientInfo = {
   id: string;
@@ -30,6 +38,7 @@ type WorkoutExercise = {
   rest: string | null;
   rir: string | null;
   notes: string | null;
+  series_group_id: string | null;
   exercise: Exercise | null;
 };
 
@@ -49,16 +58,6 @@ type RoutineManagerProps = {
   initialDays: WorkoutDay[];
   exercises: Exercise[];
 };
-
-const weekDays = [
-  "Lunes",
-  "Martes",
-  "Miércoles",
-  "Jueves",
-  "Viernes",
-  "Sábado",
-  "Domingo",
-];
 
 function getYouTubeEmbedUrl(url: string) {
   try {
@@ -110,6 +109,16 @@ export default function RoutineManager({
   const [loadingExercise, setLoadingExercise] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [selectedExerciseName, setSelectedExerciseName] = useState("");
+  const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
+  const [seriesSelectionDayId, setSeriesSelectionDayId] = useState<
+    string | null
+  >(null);
+  const [selectedSeriesExerciseIds, setSelectedSeriesExerciseIds] = useState<
+    string[]
+  >([]);
+  const [loadingSeries, setLoadingSeries] = useState(false);
+
+  const orderedDays = useMemo(() => sortWorkoutDays(days), [days]);
 
   const filteredExercises = useMemo(() => {
     const query = exerciseSearch.toLowerCase().trim();
@@ -174,6 +183,7 @@ export default function RoutineManager({
     };
 
     setDays((current) => [newDay, ...current]);
+    setExpandedDayId(newDay.id);
     setMessage("Día creado correctamente.");
     setDayFormOpen(false);
     setLoadingDay(false);
@@ -251,6 +261,15 @@ export default function RoutineManager({
     }
 
     setDays((currentDays) => currentDays.filter((day) => day.id !== dayId));
+    setExpandedDayId((current) => (current === dayId ? null : current));
+    setOpenExerciseFormDayId((current) =>
+      current === dayId ? null : current
+    );
+    setEditingDayId((current) => (current === dayId ? null : current));
+    setSeriesSelectionDayId((current) =>
+      current === dayId ? null : current
+    );
+    setSelectedSeriesExerciseIds([]);
     setMessage("Día eliminado correctamente.");
     setLoadingDay(false);
   }
@@ -282,7 +301,9 @@ export default function RoutineManager({
     }
 
     const currentDay = days.find((day) => day.id === workoutDayId);
-    const nextPosition = (currentDay?.exercises.length ?? 0) + 1;
+    const nextPosition =
+      Math.max(0, ...(currentDay?.exercises.map((item) => item.position) ?? [])) +
+      1;
 
     setLoadingExercise(true);
     setMessage("");
@@ -309,8 +330,10 @@ export default function RoutineManager({
       return;
     }
 
+    const newWorkoutExerciseData = data as Omit<WorkoutExercise, "exercise">;
     const newWorkoutExercise: WorkoutExercise = {
-      ...(data as Omit<WorkoutExercise, "exercise">),
+      ...newWorkoutExerciseData,
+      series_group_id: newWorkoutExerciseData.series_group_id ?? null,
       exercise: selectedExercise,
     };
 
@@ -382,8 +405,15 @@ export default function RoutineManager({
       return;
     }
 
+    const currentSeriesGroupId = days
+      .find((day) => day.id === workoutDayId)
+      ?.exercises.find((item) => item.id === workoutExerciseId)
+      ?.series_group_id;
+    const updatedExerciseData = data as Omit<WorkoutExercise, "exercise">;
     const updatedExercise: WorkoutExercise = {
-      ...(data as Omit<WorkoutExercise, "exercise">),
+      ...updatedExerciseData,
+      series_group_id:
+        updatedExerciseData.series_group_id ?? currentSeriesGroupId ?? null,
       exercise: selectedExercise,
     };
 
@@ -405,6 +435,156 @@ export default function RoutineManager({
     setLoadingExercise(false);
   }
 
+  function toggleSeriesSelection(dayId: string) {
+    setSeriesSelectionDayId((current) =>
+      current === dayId ? null : dayId
+    );
+    setSelectedSeriesExerciseIds([]);
+    setOpenExerciseFormDayId(null);
+    setEditingExerciseId(null);
+    setMessage("");
+  }
+
+  function toggleSeriesExercise(exerciseId: string) {
+    setSelectedSeriesExerciseIds((current) =>
+      current.includes(exerciseId)
+        ? current.filter((id) => id !== exerciseId)
+        : [...current, exerciseId]
+    );
+  }
+
+  async function handleCreateSeriesGroup(workoutDayId: string) {
+    const currentDay = days.find((day) => day.id === workoutDayId);
+
+    if (!currentDay) return;
+
+    const orderedExercises = flattenWorkoutExerciseBlocks(
+      currentDay.exercises
+    );
+    const selectedIdSet = new Set(selectedSeriesExerciseIds);
+    const selectedExercises = orderedExercises.filter(
+      (item) => selectedIdSet.has(item.id) && !item.series_group_id
+    );
+
+    if (selectedExercises.length < 2) {
+      setMessage("Selecciona al menos dos ejercicios para crear una serie.");
+      return;
+    }
+
+    const validSelectedIdSet = new Set(
+      selectedExercises.map((exercise) => exercise.id)
+    );
+    const reorderedExercises: WorkoutExercise[] = [];
+    let seriesInserted = false;
+
+    orderedExercises.forEach((exercise) => {
+      if (!validSelectedIdSet.has(exercise.id)) {
+        reorderedExercises.push(exercise);
+        return;
+      }
+
+      if (!seriesInserted) {
+        reorderedExercises.push(...selectedExercises);
+        seriesInserted = true;
+      }
+    });
+
+    const seriesGroupId = crypto.randomUUID();
+    const updatedExercises = reorderedExercises.map((exercise, index) => ({
+      ...exercise,
+      position: index + 1,
+      series_group_id: validSelectedIdSet.has(exercise.id)
+        ? seriesGroupId
+        : exercise.series_group_id,
+    }));
+    const rowsToSave = updatedExercises.map((exercise) => ({
+      id: exercise.id,
+      workout_day_id: exercise.workout_day_id,
+      exercise_id: exercise.exercise_id,
+      position: exercise.position,
+      sets: exercise.sets,
+      reps: exercise.reps,
+      weight: exercise.weight,
+      rest: exercise.rest,
+      rir: exercise.rir,
+      notes: exercise.notes,
+      series_group_id: exercise.series_group_id,
+    }));
+
+    setLoadingSeries(true);
+    setMessage("");
+
+    const { error } = await supabase
+      .from("workout_exercises")
+      .upsert(rowsToSave, { onConflict: "id" });
+
+    if (error) {
+      const missingSeriesColumn =
+        error.code === "42703" ||
+        error.code === "PGRST204" ||
+        error.message.includes("series_group_id");
+
+      setMessage(
+        missingSeriesColumn
+          ? "Falta activar las series combinadas en Supabase. Ejecuta el archivo supabase/series-groups.sql y vuelve a intentarlo."
+          : "No se pudo crear la serie combinada. Inténtalo de nuevo."
+      );
+      setLoadingSeries(false);
+      return;
+    }
+
+    setDays((currentDays) =>
+      currentDays.map((day) =>
+        day.id === workoutDayId
+          ? { ...day, exercises: updatedExercises }
+          : day
+      )
+    );
+    setMessage(
+      `${getSeriesLabel(selectedExercises.length)} creada correctamente.`
+    );
+    setSeriesSelectionDayId(null);
+    setSelectedSeriesExerciseIds([]);
+    setLoadingSeries(false);
+  }
+
+  async function handleUngroupSeries(
+    workoutDayId: string,
+    seriesGroupId: string
+  ) {
+    setLoadingSeries(true);
+    setMessage("");
+
+    const { error } = await supabase
+      .from("workout_exercises")
+      .update({ series_group_id: null })
+      .eq("workout_day_id", workoutDayId)
+      .eq("series_group_id", seriesGroupId);
+
+    if (error) {
+      setMessage("No se pudo desagrupar la serie.");
+      setLoadingSeries(false);
+      return;
+    }
+
+    setDays((currentDays) =>
+      currentDays.map((day) => {
+        if (day.id !== workoutDayId) return day;
+
+        return {
+          ...day,
+          exercises: day.exercises.map((exercise) =>
+            exercise.series_group_id === seriesGroupId
+              ? { ...exercise, series_group_id: null }
+              : exercise
+          ),
+        };
+      })
+    );
+    setMessage("Serie desagrupada correctamente.");
+    setLoadingSeries(false);
+  }
+
   async function handleDeleteExercise(
     workoutExerciseId: string,
     workoutDayId: string,
@@ -415,6 +595,18 @@ export default function RoutineManager({
     );
 
     if (!confirmed) return;
+
+    const currentDay = days.find((day) => day.id === workoutDayId);
+    const exerciseToDelete = currentDay?.exercises.find(
+      (item) => item.id === workoutExerciseId
+    );
+    const remainingSeriesMembers = exerciseToDelete?.series_group_id
+      ? (currentDay?.exercises ?? []).filter(
+          (item) =>
+            item.series_group_id === exerciseToDelete.series_group_id &&
+            item.id !== workoutExerciseId
+        )
+      : [];
 
     setLoadingExercise(true);
     setMessage("");
@@ -430,20 +622,46 @@ export default function RoutineManager({
       return;
     }
 
+    let ungroupedRemainingExerciseId: string | null = null;
+
+    if (remainingSeriesMembers.length === 1) {
+      const remainingExercise = remainingSeriesMembers[0];
+      const { error: ungroupError } = await supabase
+        .from("workout_exercises")
+        .update({ series_group_id: null })
+        .eq("id", remainingExercise.id)
+        .eq("workout_day_id", workoutDayId);
+
+      if (!ungroupError) {
+        ungroupedRemainingExerciseId = remainingExercise.id;
+      }
+    }
+
     setDays((currentDays) =>
       currentDays.map((day) => {
         if (day.id !== workoutDayId) return day;
 
         return {
           ...day,
-          exercises: day.exercises.filter(
-            (item) => item.id !== workoutExerciseId
-          ),
+          exercises: day.exercises
+            .filter((item) => item.id !== workoutExerciseId)
+            .map((item) =>
+              item.id === ungroupedRemainingExerciseId
+                ? { ...item, series_group_id: null }
+                : item
+            ),
         };
       })
     );
 
-    setMessage("Ejercicio eliminado correctamente.");
+    setSelectedSeriesExerciseIds((current) =>
+      current.filter((id) => id !== workoutExerciseId)
+    );
+    setMessage(
+      ungroupedRemainingExerciseId
+        ? "Ejercicio eliminado y serie desagrupada correctamente."
+        : "Ejercicio eliminado correctamente."
+    );
     setLoadingExercise(false);
   }
 
@@ -452,6 +670,16 @@ export default function RoutineManager({
 
     setSelectedExerciseName(exercise.name);
     setSelectedVideo(getYouTubeEmbedUrl(exercise.video_url));
+  }
+
+  function toggleDay(dayId: string) {
+    setExpandedDayId((current) => (current === dayId ? null : dayId));
+    setOpenExerciseFormDayId(null);
+    setEditingDayId(null);
+    setEditingExerciseId(null);
+    setExerciseSearch("");
+    setSeriesSelectionDayId(null);
+    setSelectedSeriesExerciseIds([]);
   }
 
   return (
@@ -498,7 +726,11 @@ export default function RoutineManager({
       </div>
 
       {message && (
-        <p className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-sm font-bold text-[var(--muted)]">
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-sm font-bold text-[var(--muted)]"
+        >
           {message}
         </p>
       )}
@@ -524,7 +756,7 @@ export default function RoutineManager({
               name="day_of_week"
               className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none"
             >
-              {weekDays.map((day) => (
+              {WEEK_DAYS.map((day) => (
                 <option key={day}>{day}</option>
               ))}
             </select>
@@ -547,63 +779,113 @@ export default function RoutineManager({
         </form>
       )}
 
-      <div className="mt-7 grid gap-5">
-        {days.map((day) => (
-          <article
-            key={day.id}
-            className="rounded-[34px] border border-[var(--border)] bg-[var(--surface)] p-5 backdrop-blur-xl sm:p-6"
-          >
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.28em] text-[var(--muted)]">
-                  {day.day_of_week || "Día"}
-                </p>
+      {days.length > 0 && (
+        <p className="mt-7 text-sm font-bold text-[var(--muted)]">
+          Selecciona un día para revisar o editar la rutina completa.
+        </p>
+      )}
 
-                <h2 className="mt-3 text-3xl font-black tracking-tight">
-                  {day.title}
-                </h2>
+      <div className={days.length > 0 ? "mt-4 grid gap-5" : "mt-7 grid gap-5"}>
+        {orderedDays.map((day) => {
+          const expanded = expandedDayId === day.id;
+          const buttonId = `coach-day-toggle-${day.id}`;
+          const panelId = `coach-day-panel-${day.id}`;
+          const exerciseBlocks = buildWorkoutExerciseBlocks(day.exercises);
+          const displayPositionById = new Map<string, number>(
+            exerciseBlocks
+              .flatMap((block) => block.exercises)
+              .map((exercise, index) => [exercise.id, index + 1] as const)
+          );
+          const selectingSeries = seriesSelectionDayId === day.id;
+          const availableForSeries = day.exercises.filter(
+            (exercise) => !exercise.series_group_id
+          ).length;
+          const seriesHelpId = `series-help-${day.id}`;
 
-                {day.notes && (
-                  <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--muted)]">
-                    {day.notes}
-                  </p>
-                )}
-              </div>
+          return (
+            <article
+              key={day.id}
+              className="overflow-hidden rounded-[34px] border border-[var(--border)] bg-[var(--surface)] backdrop-blur-xl"
+            >
+            <RoutineDayToggle
+              buttonId={buttonId}
+              panelId={panelId}
+              dayOfWeek={day.day_of_week}
+              title={day.title}
+              exerciseCount={day.exercises.length}
+              expanded={expanded}
+              onToggle={() => toggleDay(day.id)}
+            />
 
-              <div className="flex flex-col gap-3 sm:items-end">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setOpenExerciseFormDayId((current) =>
-                      current === day.id ? null : day.id
-                    )
-                  }
-                  className="rounded-2xl bg-[var(--button-bg)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--button-text)] transition active:scale-95"
-                >
-                  + Ejercicio
-                </button>
+            {expanded && (
+              <div
+                id={panelId}
+                role="region"
+                aria-labelledby={buttonId}
+                className="border-t border-[var(--border)] px-5 pb-5 pt-5 sm:px-6 sm:pb-6"
+              >
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    {day.notes && (
+                      <p className="max-w-3xl text-sm leading-7 text-[var(--muted)]">
+                        {day.notes}
+                      </p>
+                    )}
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setEditingDayId((current) =>
-                      current === day.id ? null : day.id
-                    )
-                  }
-                  className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
-                >
-                  Editar día
-                </button>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSeriesSelectionDayId(null);
+                        setSelectedSeriesExerciseIds([]);
+                        setOpenExerciseFormDayId((current) =>
+                          current === day.id ? null : day.id
+                        );
+                      }}
+                      className="rounded-2xl bg-[var(--button-bg)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--button-text)] transition active:scale-95"
+                    >
+                      + Ejercicio
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleDeleteDay(day.id, day.title)}
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-red-500 transition hover:bg-red-500/20"
-                >
-                  Eliminar día
-                </button>
-              </div>
-            </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleSeriesSelection(day.id)}
+                      disabled={!selectingSeries && availableForSeries < 2}
+                      aria-pressed={selectingSeries}
+                      title={
+                        !selectingSeries && availableForSeries < 2
+                          ? "Agrega al menos dos ejercicios sin agrupar"
+                          : undefined
+                      }
+                      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--text)] transition hover:bg-[var(--surface-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {selectingSeries
+                        ? "Cancelar selección"
+                        : "Agrupar ejercicios"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingDayId((current) =>
+                          current === day.id ? null : day.id
+                        )
+                      }
+                      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
+                    >
+                      Editar día
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteDay(day.id, day.title)}
+                      className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-red-500 transition hover:bg-red-500/20"
+                    >
+                      Eliminar día
+                    </button>
+                  </div>
+                </div>
 
             {editingDayId === day.id && (
               <form
@@ -627,7 +909,7 @@ export default function RoutineManager({
                     defaultValue={day.day_of_week ?? "Lunes"}
                     className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-[var(--text)] outline-none"
                   >
-                    {weekDays.map((weekDay) => (
+                    {WEEK_DAYS.map((weekDay) => (
                       <option key={weekDay}>{weekDay}</option>
                     ))}
                   </select>
@@ -713,18 +995,116 @@ export default function RoutineManager({
               </form>
             )}
 
+            {selectingSeries && (
+              <div
+                id={seriesHelpId}
+                className="mt-6 rounded-[28px] border-2 border-[var(--text)] bg-[var(--surface-strong)] p-5"
+              >
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.3em] text-[var(--muted)]">
+                      Crear serie combinada
+                    </p>
+                    <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--muted)]">
+                      Selecciona dos o más ejercicios. Se mostrarán juntos y
+                      respetarán el orden actual de la rutina.
+                    </p>
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className="mt-3 text-sm font-black text-[var(--text)]"
+                    >
+                      {selectedSeriesExerciseIds.length} ejercicio
+                      {selectedSeriesExerciseIds.length === 1 ? "" : "s"}{" "}
+                      seleccionado
+                      {selectedSeriesExerciseIds.length === 1 ? "" : "s"}
+                    </p>
+
+                    {message && (
+                      <p
+                        role="alert"
+                        className="mt-4 max-w-2xl rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold leading-6 text-red-500"
+                      >
+                        {message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => handleCreateSeriesGroup(day.id)}
+                      disabled={
+                        selectedSeriesExerciseIds.length < 2 || loadingSeries
+                      }
+                      className="rounded-2xl bg-[var(--button-bg)] px-6 py-4 text-xs font-black uppercase tracking-[0.16em] text-[var(--button-text)] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {loadingSeries
+                        ? "Guardando..."
+                        : selectedSeriesExerciseIds.length >= 2
+                          ? `Crear ${getSeriesLabel(
+                              selectedSeriesExerciseIds.length
+                            ).toLowerCase()}`
+                          : "Selecciona ejercicios"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleSeriesSelection(day.id)}
+                      disabled={loadingSeries}
+                      className="rounded-2xl border border-[var(--border)] px-6 py-4 text-xs font-black uppercase tracking-[0.16em] text-[var(--text)] disabled:opacity-40"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="mt-6 grid gap-3">
-              {day.exercises.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-[24px] border border-[var(--border)] bg-[var(--bg)] p-5"
-                >
+              {exerciseBlocks.map((block) => {
+                const exerciseCards = block.exercises.map((item, index) => {
+                  const selected = selectedSeriesExerciseIds.includes(item.id);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-[24px] border border-[var(--border)] bg-[var(--bg)] p-5 ${
+                        selected ? "ring-2 ring-[var(--text)]" : ""
+                      }`}
+                    >
+                  {selectingSeries && !item.series_group_id && (
+                    <label className="mb-5 flex cursor-pointer items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-black text-[var(--text)]">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleSeriesExercise(item.id)}
+                        aria-describedby={seriesHelpId}
+                        className="h-5 w-5 shrink-0 accent-[var(--text)]"
+                      />
+                      <span>
+                        Incluir {item.exercise?.name || "este ejercicio"} en la
+                        serie
+                      </span>
+                    </label>
+                  )}
+
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
-                        {item.position.toString().padStart(2, "0")} ·{" "}
-                        {item.exercise?.muscle_group || "Ejercicio"}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+                          {(displayPositionById.get(item.id) ?? item.position)
+                            .toString()
+                            .padStart(2, "0")} ·{" "}
+                          {item.exercise?.muscle_group || "Ejercicio"}
+                        </p>
+
+                        {block.seriesGroupId && (
+                          <span className="rounded-full bg-[var(--text)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--bg)]">
+                            Paso {index + 1} de {block.exercises.length}
+                          </span>
+                        )}
+                      </div>
 
                       <h3 className="mt-3 text-2xl font-black tracking-tight">
                         {item.exercise?.name || "Ejercicio eliminado"}
@@ -774,6 +1154,9 @@ export default function RoutineManager({
                         <button
                           type="button"
                           onClick={() => openVideo(item.exercise)}
+                          aria-label={`Ver video de ${
+                            item.exercise?.name || "este ejercicio"
+                          }`}
                           className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
                         >
                           Ver video
@@ -866,8 +1249,27 @@ export default function RoutineManager({
                       </div>
                     </form>
                   )}
-                </div>
-              ))}
+                    </div>
+                  );
+                });
+
+                if (block.seriesGroupId) {
+                  return (
+                    <RoutineSeriesBlock
+                      key={block.id}
+                      exerciseCount={block.exercises.length}
+                      onUngroup={() =>
+                        handleUngroupSeries(day.id, block.seriesGroupId!)
+                      }
+                      ungrouping={loadingSeries}
+                    >
+                      {exerciseCards}
+                    </RoutineSeriesBlock>
+                  );
+                }
+
+                return exerciseCards[0];
+              })}
 
               {day.exercises.length === 0 && (
                 <div className="rounded-[24px] border border-dashed border-[var(--border)] p-6 text-center">
@@ -877,8 +1279,11 @@ export default function RoutineManager({
                 </div>
               )}
             </div>
-          </article>
-        ))}
+              </div>
+            )}
+            </article>
+          );
+        })}
 
         {days.length === 0 && (
           <div className="rounded-[32px] border border-[var(--border)] bg-[var(--surface)] p-8 text-center backdrop-blur-xl">
