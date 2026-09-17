@@ -370,6 +370,13 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
                   Ver rutina
                 </Link>
 
+                <Link
+                  href={`/dashboard/coach/clientes/${client.id}#calendario`}
+                  className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-center text-xs font-black uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
+                >
+                  Ver calendario
+                </Link>
+
                 <button
                   type="button"
                   onClick={() =>

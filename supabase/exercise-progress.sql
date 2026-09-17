@@ -6,6 +6,8 @@ create table if not exists public.exercise_progress_logs (
   exercise_id uuid not null references public.exercises(id) on delete restrict,
   workout_exercise_id uuid references public.workout_exercises(id) on delete set null,
   weight_kg numeric(7, 2) not null check (weight_kg >= 0 and weight_kg <= 2000),
+  weight_value numeric(8, 2),
+  weight_unit text not null default 'kg',
   reps integer check (reps is null or (reps > 0 and reps <= 1000)),
   notes text check (notes is null or char_length(notes) <= 500),
   recorded_on date not null default ((now() at time zone 'America/Mexico_City')::date),
@@ -17,6 +19,51 @@ alter table public.exercise_progress_logs
   add column if not exists workout_exercise_id uuid
   references public.workout_exercises(id)
   on delete set null;
+
+alter table public.exercise_progress_logs
+  add column if not exists weight_value numeric(8, 2),
+  add column if not exists weight_unit text;
+
+update public.exercise_progress_logs
+set weight_unit = 'kg'
+where weight_unit is null;
+
+update public.exercise_progress_logs
+set weight_value = weight_kg
+where weight_value is null;
+
+-- Permitir NULL mantiene compatible una versión anterior de la app durante
+-- el despliegue; la versión nueva siempre guarda este valor.
+alter table public.exercise_progress_logs
+  alter column weight_value drop not null,
+  alter column weight_unit set default 'kg',
+  alter column weight_unit set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.exercise_progress_logs'::regclass
+      and conname = 'exercise_progress_weight_value_range'
+  ) then
+    alter table public.exercise_progress_logs
+      add constraint exercise_progress_weight_value_range
+      check (weight_value >= 0 and weight_value <= 5000);
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.exercise_progress_logs'::regclass
+      and conname = 'exercise_progress_weight_unit_allowed'
+  ) then
+    alter table public.exercise_progress_logs
+      add constraint exercise_progress_weight_unit_allowed
+      check (weight_unit in ('kg', 'lb'));
+  end if;
+end
+$$;
 
 create index if not exists exercise_progress_client_exercise_date_idx
   on public.exercise_progress_logs (client_id, exercise_id, recorded_on desc, created_at desc);
@@ -103,6 +150,8 @@ grant insert (
   exercise_id,
   workout_exercise_id,
   weight_kg,
+  weight_value,
+  weight_unit,
   reps,
   notes,
   recorded_on
@@ -110,6 +159,12 @@ grant insert (
 
 comment on table public.exercise_progress_logs is
   'Bitácora de cargas y repeticiones registrada por cada cliente y ejercicio.';
+
+comment on column public.exercise_progress_logs.weight_value is
+  'Valor exacto de la carga en la unidad elegida por el cliente.';
+
+comment on column public.exercise_progress_logs.weight_unit is
+  'Unidad original de la carga: kg o lb.';
 
 create table if not exists public.client_progress_reminder_state (
   client_id uuid primary key references public.clients(id) on delete cascade,

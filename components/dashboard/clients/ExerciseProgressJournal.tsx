@@ -3,11 +3,18 @@
 import { FormEvent, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  ExerciseProgressEntry,
+  convertWeightFromKg,
+  convertWeightToKg,
   formatProgressDate,
+  formatProgressWeight,
   formatWeight,
   getProgressReminder,
+  isWeightUnit,
+  normalizeProgressEntry,
   sortProgressEntries,
+  type ExerciseProgressEntry,
+  type ExerciseProgressEntryFromDb,
+  type WeightUnit,
 } from "@/lib/exercise-progress";
 
 type ExerciseProgressJournalProps = {
@@ -18,13 +25,16 @@ type ExerciseProgressJournalProps = {
   exerciseName: string;
   entries: ExerciseProgressEntry[];
   storageReady: boolean;
-  onEntryAdded: (entry: ExerciseProgressEntry) => void;
-  onEntryDeleted: (entryId: string) => void;
+  weightUnitsReady: boolean;
+  readOnly?: boolean;
+  onEntryAdded?: (entry: ExerciseProgressEntry) => void;
+  onEntryDeleted?: (entryId: string) => void;
 };
 
 type ProgressChartProps = {
   entries: ExerciseProgressEntry[];
   exerciseName: string;
+  displayUnit: WeightUnit;
 };
 
 function getTodayInputValue() {
@@ -40,13 +50,19 @@ function getTodayInputValue() {
   return `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
 }
 
-function ProgressChart({ entries, exerciseName }: ProgressChartProps) {
+function ProgressChart({
+  entries,
+  exerciseName,
+  displayUnit,
+}: ProgressChartProps) {
   const chronologicalEntries = [...entries]
     .sort((first, second) =>
       first.recorded_on.localeCompare(second.recorded_on)
     )
     .slice(-12);
-  const weights = chronologicalEntries.map((entry) => entry.weight_kg);
+  const weights = chronologicalEntries.map((entry) =>
+    convertWeightFromKg(entry.weight_kg, displayUnit)
+  );
   const minimumWeight = Math.min(...weights);
   const maximumWeight = Math.max(...weights);
   const weightRange = Math.max(1, maximumWeight - minimumWeight);
@@ -57,6 +73,7 @@ function ProgressChart({ entries, exerciseName }: ProgressChartProps) {
   const usableWidth = width - horizontalPadding * 2;
   const usableHeight = height - verticalPadding * 2;
   const points = chronologicalEntries.map((entry, index) => {
+    const weight = convertWeightFromKg(entry.weight_kg, displayUnit);
     const x =
       horizontalPadding +
       (chronologicalEntries.length === 1
@@ -64,17 +81,20 @@ function ProgressChart({ entries, exerciseName }: ProgressChartProps) {
         : (index / (chronologicalEntries.length - 1)) * usableWidth);
     const y =
       verticalPadding +
-      ((maximumWeight - entry.weight_kg) / weightRange) * usableHeight;
+      ((maximumWeight - weight) / weightRange) * usableHeight;
 
     return { entry, x, y };
   });
-  const firstWeight = chronologicalEntries[0]?.weight_kg ?? 0;
-  const latestWeight = chronologicalEntries.at(-1)?.weight_kg ?? 0;
+  const firstWeight = weights[0] ?? 0;
+  const latestWeight = weights.at(-1) ?? 0;
+  const spokenUnit = displayUnit === "kg" ? "kilogramos" : "libras";
 
   return (
     <div className="rounded-[24px] border border-[var(--border)] bg-[var(--bg)] p-4">
       <div className="mb-3 flex items-center justify-between gap-4 text-xs font-black uppercase tracking-[0.16em] text-[var(--muted)]">
-        <span>{formatWeight(maximumWeight)} kg</span>
+        <span>
+          {formatWeight(maximumWeight)} {displayUnit}
+        </span>
         <span>Últimos {chronologicalEntries.length} registros</span>
       </div>
 
@@ -83,7 +103,7 @@ function ProgressChart({ entries, exerciseName }: ProgressChartProps) {
         role="img"
         aria-label={`Progreso de ${exerciseName}: de ${formatWeight(
           firstWeight
-        )} a ${formatWeight(latestWeight)} kilogramos.`}
+        )} a ${formatWeight(latestWeight)} ${spokenUnit}.`}
         className="h-auto w-full overflow-visible"
       >
         {[0, 0.5, 1].map((ratio) => (
@@ -124,7 +144,7 @@ function ProgressChart({ entries, exerciseName }: ProgressChartProps) {
       </svg>
 
       <p className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-[var(--muted)]">
-        Mínimo {formatWeight(minimumWeight)} kg
+        Mínimo {formatWeight(minimumWeight)} {displayUnit}
       </p>
     </div>
   );
@@ -138,6 +158,8 @@ export default function ExerciseProgressJournal({
   exerciseName,
   entries,
   storageReady,
+  weightUnitsReady,
+  readOnly = false,
   onEntryAdded,
   onEntryDeleted,
 }: ExerciseProgressJournalProps) {
@@ -150,6 +172,12 @@ export default function ExerciseProgressJournal({
   const chronologicalEntries = [...orderedEntries].reverse();
   const firstEntry = chronologicalEntries[0] ?? null;
   const latestEntry = orderedEntries[0] ?? null;
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(
+    () => latestEntry?.weight_unit ?? "kg"
+  );
+  const displayUnit = readOnly
+    ? latestEntry?.weight_unit ?? "kg"
+    : weightUnit;
   const bestWeight =
     orderedEntries.length > 0
       ? Math.max(...orderedEntries.map((entry) => entry.weight_kg))
@@ -158,9 +186,24 @@ export default function ExerciseProgressJournal({
     firstEntry && latestEntry
       ? latestEntry.weight_kg - firstEntry.weight_kg
       : null;
+  const firstDisplayWeight = convertWeightFromKg(
+    firstEntry?.weight_kg ?? 0,
+    displayUnit
+  );
+  const bestDisplayWeight = convertWeightFromKg(
+    bestWeight ?? 0,
+    displayUnit
+  );
+  const displayWeightChange = convertWeightFromKg(
+    weightChange ?? 0,
+    displayUnit
+  );
+  const writable = storageReady;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (readOnly) return;
 
     if (!storageReady) {
       setMessage(
@@ -171,13 +214,32 @@ export default function ExerciseProgressJournal({
 
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    const weight = Number(form.get("weight_kg"));
+    const weightValue = Number(form.get("weight_value"));
+    const selectedUnitValue = weightUnitsReady
+      ? form.get("weight_unit")
+      : "kg";
     const repsValue = String(form.get("reps") ?? "").trim();
     const reps = repsValue ? Number(repsValue) : null;
     const notes = String(form.get("notes") ?? "").trim();
     const recordedOn = String(form.get("recorded_on") ?? "");
 
-    if (!Number.isFinite(weight) || weight < 0) {
+    if (!isWeightUnit(selectedUnitValue)) {
+      setMessage("Selecciona kilogramos o libras.");
+      return;
+    }
+
+    const selectedUnit = selectedUnitValue;
+    const weightKg = Number(
+      convertWeightToKg(weightValue, selectedUnit).toFixed(2)
+    );
+
+    const maximumWeight = selectedUnit === "kg" ? 2000 : 4409.25;
+
+    if (
+      !Number.isFinite(weightValue) ||
+      weightValue < 0 ||
+      weightValue > maximumWeight
+    ) {
       setMessage("Escribe un peso válido.");
       return;
     }
@@ -190,50 +252,70 @@ export default function ExerciseProgressJournal({
     setSaving(true);
     setMessage("");
 
-    const { data, error } = await supabase
+    const progressInsert = supabase
       .from("exercise_progress_logs")
-      .insert({
-        client_id: clientId,
-        exercise_id: exerciseId,
-        workout_exercise_id: workoutExerciseId,
-        weight_kg: weight,
-        reps,
-        notes: notes || null,
-        recorded_on: recordedOn,
-      })
+      .insert(
+        weightUnitsReady
+          ? {
+              client_id: clientId,
+              exercise_id: exerciseId,
+              workout_exercise_id: workoutExerciseId,
+              weight_value: weightValue,
+              weight_unit: selectedUnit,
+              weight_kg: weightKg,
+              reps,
+              notes: notes || null,
+              recorded_on: recordedOn,
+            }
+          : {
+              client_id: clientId,
+              exercise_id: exerciseId,
+              workout_exercise_id: workoutExerciseId,
+              weight_kg: weightKg,
+              reps,
+              notes: notes || null,
+              recorded_on: recordedOn,
+            }
+      );
+    const { data, error } = await progressInsert
       .select(
-        "id, client_id, exercise_id, workout_exercise_id, weight_kg, reps, notes, recorded_on, created_at"
+        weightUnitsReady
+          ? "id, client_id, exercise_id, workout_exercise_id, weight_value, weight_unit, weight_kg, reps, notes, recorded_on, created_at"
+          : "id, client_id, exercise_id, workout_exercise_id, weight_kg, reps, notes, recorded_on, created_at"
       )
       .single();
 
     if (error || !data) {
       const storageMissing =
         error?.code === "42P01" ||
+        error?.code === "PGRST204" ||
         error?.code === "PGRST205" ||
-        Boolean(error?.message.includes("exercise_progress_logs"));
+        Boolean(error?.message.includes("exercise_progress_logs")) ||
+        Boolean(error?.message.includes("weight_value")) ||
+        Boolean(error?.message.includes("weight_unit"));
 
       setMessage(
         storageMissing
-          ? "Falta activar la bitácora en Supabase. Ejecuta supabase/exercise-progress.sql y recarga la página."
+          ? "No se pudo acceder a la bitácora en Supabase. Revisa las actualizaciones pendientes y recarga la página."
           : "No se pudo guardar el avance. Inténtalo de nuevo."
       );
       setSaving(false);
       return;
     }
 
-    onEntryAdded({
-      ...(data as ExerciseProgressEntry),
-      weight_kg: Number(data.weight_kg),
-      reps: data.reps === null ? null : Number(data.reps),
-    });
+    onEntryAdded?.(
+      normalizeProgressEntry(data as unknown as ExerciseProgressEntryFromDb)
+    );
     formElement.reset();
     setMessage("Avance guardado. Tu progreso ya quedó actualizado.");
     setSaving(false);
   }
 
   async function handleDelete(entry: ExerciseProgressEntry) {
+    if (readOnly) return;
+
     const confirmed = window.confirm(
-      `¿Eliminar el registro de ${formatWeight(entry.weight_kg)} kg del ${formatProgressDate(
+      `¿Eliminar el registro de ${formatProgressWeight(entry)} del ${formatProgressDate(
         entry.recorded_on
       )}?`
     );
@@ -255,7 +337,7 @@ export default function ExerciseProgressJournal({
       return;
     }
 
-    onEntryDeleted(entry.id);
+    onEntryDeleted?.(entry.id);
     setMessage("Registro eliminado.");
     setDeletingId(null);
   }
@@ -279,14 +361,22 @@ export default function ExerciseProgressJournal({
           </h3>
         </div>
 
-        {latestEntry && (
-          <p className="rounded-full border border-[var(--border)] bg-[var(--bg)] px-4 py-2 text-sm font-black">
-            Último: {formatWeight(latestEntry.weight_kg)} kg
-          </p>
-        )}
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          {readOnly && (
+            <p className="rounded-full border border-[var(--border)] bg-[var(--bg)] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[var(--muted)]">
+              Solo lectura
+            </p>
+          )}
+
+          {latestEntry && (
+            <p className="rounded-full border border-[var(--border)] bg-[var(--bg)] px-4 py-2 text-sm font-black">
+              Último: {formatProgressWeight(latestEntry)}
+            </p>
+          )}
+        </div>
       </div>
 
-      {reminder.isDue && (
+      {!readOnly && reminder.isDue && (
         <div
           role="status"
           className="mt-5 rounded-[24px] border border-amber-500/35 bg-amber-500/10 p-5"
@@ -306,33 +396,64 @@ export default function ExerciseProgressJournal({
           role="alert"
           className="mt-5 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm font-bold leading-6 text-amber-700 dark:text-amber-300"
         >
-          La bitácora requiere la actualización pendiente de Supabase antes de
-          poder guardar registros.
+          {readOnly
+            ? "No se pudo cargar la bitácora de este cliente."
+            : "La bitácora requiere la actualización pendiente de Supabase antes de poder guardar registros."}
         </p>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="mt-6 rounded-[26px] border border-[var(--border)] bg-[var(--bg)] p-5"
-      >
+      {storageReady && !weightUnitsReady && (
+        <p
+          role="alert"
+          className="mt-5 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm font-bold leading-6 text-amber-700 dark:text-amber-300"
+        >
+          {readOnly
+            ? "Los registros anteriores siguen disponibles, pero falta activar la actualización de kg y lb en Supabase."
+            : "Por ahora puedes seguir registrando en kg. Para habilitar también las libras, ejecuta supabase/progress-weight-units.sql en Supabase y recarga la página."}
+        </p>
+      )}
+
+      {!readOnly && (
+        <form
+          onSubmit={handleSubmit}
+          className="mt-6 rounded-[26px] border border-[var(--border)] bg-[var(--bg)] p-5"
+        >
         <p className="text-sm font-black">Registrar avance</p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <label className="grid gap-2 text-sm font-bold text-[var(--muted)]">
-            Peso (kg)
-            <input
-              name="weight_kg"
-              type="number"
-              min="0"
-              max="2000"
-              step="0.25"
-              inputMode="decimal"
-              required
-              disabled={!storageReady || saving}
-              placeholder="Ej. 42.5"
-              className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-base text-[var(--text)] outline-none focus:border-[var(--text)] disabled:opacity-50"
-            />
-          </label>
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-bold text-[var(--muted)]">
+              Peso
+            </legend>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+              <input
+                name="weight_value"
+                type="number"
+                min="0"
+                max={weightUnit === "kg" ? "2000" : "4409.25"}
+                step="0.25"
+                inputMode="decimal"
+                required
+                disabled={!writable || saving}
+                placeholder={weightUnit === "kg" ? "Ej. 42.5" : "Ej. 95"}
+                aria-label={`Peso en ${weightUnit === "kg" ? "kilogramos" : "libras"}`}
+                className="min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-base text-[var(--text)] outline-none focus:border-[var(--text)] disabled:opacity-50"
+              />
+              <select
+                name="weight_unit"
+                value={weightUnit}
+                onChange={(event) =>
+                  setWeightUnit(event.target.value as WeightUnit)
+                }
+                disabled={!writable || !weightUnitsReady || saving}
+                aria-label="Unidad de peso"
+                className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-base font-black text-[var(--text)] outline-none focus:border-[var(--text)] disabled:opacity-50"
+              >
+                <option value="kg">kg</option>
+                <option value="lb">lb</option>
+              </select>
+            </div>
+          </fieldset>
 
           <label className="grid gap-2 text-sm font-bold text-[var(--muted)]">
             Repeticiones
@@ -343,7 +464,7 @@ export default function ExerciseProgressJournal({
               max="1000"
               step="1"
               inputMode="numeric"
-              disabled={!storageReady || saving}
+              disabled={!writable || saving}
               placeholder="Ej. 10"
               className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-base text-[var(--text)] outline-none focus:border-[var(--text)] disabled:opacity-50"
             />
@@ -357,7 +478,7 @@ export default function ExerciseProgressJournal({
               max={getTodayInputValue()}
               defaultValue={getTodayInputValue()}
               required
-              disabled={!storageReady || saving}
+              disabled={!writable || saving}
               className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-base text-[var(--text)] outline-none focus:border-[var(--text)] disabled:opacity-50"
             />
           </label>
@@ -369,7 +490,7 @@ export default function ExerciseProgressJournal({
             name="notes"
             rows={2}
             maxLength={500}
-            disabled={!storageReady || saving}
+            disabled={!writable || saving}
             placeholder="¿Cómo se sintió? Técnica, dificultad o cualquier detalle útil."
             className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-base text-[var(--text)] outline-none focus:border-[var(--text)] disabled:opacity-50"
           />
@@ -377,7 +498,7 @@ export default function ExerciseProgressJournal({
 
         <button
           type="submit"
-          disabled={!storageReady || saving}
+          disabled={!writable || saving}
           className="mt-4 w-full rounded-2xl bg-[var(--button-bg)] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-[var(--button-text)] transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? "Guardando..." : "Guardar avance"}
@@ -392,7 +513,8 @@ export default function ExerciseProgressJournal({
             {message}
           </p>
         )}
-      </form>
+        </form>
+      )}
 
       {orderedEntries.length > 0 ? (
         <div className="mt-6">
@@ -402,7 +524,7 @@ export default function ExerciseProgressJournal({
                 Inicio
               </p>
               <p className="mt-2 text-2xl font-black">
-                {formatWeight(firstEntry?.weight_kg ?? 0)} kg
+                {formatWeight(firstDisplayWeight)} {displayUnit}
               </p>
             </div>
             <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg)] p-4">
@@ -410,7 +532,7 @@ export default function ExerciseProgressJournal({
                 Mejor carga
               </p>
               <p className="mt-2 text-2xl font-black">
-                {formatWeight(bestWeight ?? 0)} kg
+                {formatWeight(bestDisplayWeight)} {displayUnit}
               </p>
             </div>
             <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg)] p-4">
@@ -418,17 +540,21 @@ export default function ExerciseProgressJournal({
                 Cambio
               </p>
               <p className="mt-2 text-2xl font-black">
-                {(weightChange ?? 0) > 0 ? "+" : ""}
-                {formatWeight(weightChange ?? 0)} kg
+                {displayWeightChange > 0 ? "+" : ""}
+                {formatWeight(displayWeightChange)} {displayUnit}
               </p>
             </div>
           </div>
 
           <div className="mt-4 text-[var(--text)]">
-            <ProgressChart entries={orderedEntries} exerciseName={exerciseName} />
+            <ProgressChart
+              entries={orderedEntries}
+              exerciseName={exerciseName}
+              displayUnit={displayUnit}
+            />
           </div>
 
-          {!reminder.isDue && reminder.daysUntilReminder > 0 && (
+          {!readOnly && !reminder.isDue && reminder.daysUntilReminder > 0 && (
             <p className="mt-4 text-sm font-bold text-[var(--muted)]">
               Próximo recordatorio de progreso en {reminder.daysUntilReminder}{" "}
               día{reminder.daysUntilReminder === 1 ? "" : "s"}.
@@ -444,7 +570,7 @@ export default function ExerciseProgressJournal({
               >
                 <div>
                   <p className="text-lg font-black">
-                    {formatWeight(entry.weight_kg)} kg
+                    {formatProgressWeight(entry)}
                     {entry.reps ? ` · ${entry.reps} reps` : ""}
                   </p>
                   <p className="mt-1 text-sm font-bold text-[var(--muted)]">
@@ -457,27 +583,34 @@ export default function ExerciseProgressJournal({
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleDelete(entry)}
-                  disabled={deletingId === entry.id}
-                  aria-label={`Eliminar registro de ${formatWeight(
-                    entry.weight_kg
-                  )} kilogramos del ${formatProgressDate(entry.recorded_on)}`}
-                  className="shrink-0 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-red-500 transition hover:bg-red-500/20 disabled:opacity-50"
-                >
-                  {deletingId === entry.id ? "Eliminando..." : "Eliminar"}
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(entry)}
+                    disabled={deletingId === entry.id}
+                    aria-label={`Eliminar registro de ${formatProgressWeight(
+                      entry
+                    )} del ${formatProgressDate(entry.recorded_on)}`}
+                    className="shrink-0 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-red-500 transition hover:bg-red-500/20 disabled:opacity-50"
+                  >
+                    {deletingId === entry.id ? "Eliminando..." : "Eliminar"}
+                  </button>
+                )}
               </li>
             ))}
           </ol>
         </div>
       ) : (
         <div className="mt-6 rounded-[24px] border border-dashed border-[var(--border)] p-5 text-center">
-          <p className="font-black">Tu progreso comienza con un registro.</p>
+          <p className="font-black">
+            {readOnly
+              ? "Este cliente todavía no ha registrado avances."
+              : "Tu progreso comienza con un registro."}
+          </p>
           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-            Guarda el peso que usaste hoy y aquí verás cómo avanzas con el
-            tiempo.
+            {readOnly
+              ? "Cuando registre una carga, su evolución aparecerá aquí."
+              : "Guarda el peso que usaste hoy y aquí verás cómo avanzas con el tiempo."}
           </p>
         </div>
       )}

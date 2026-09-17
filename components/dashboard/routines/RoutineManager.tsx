@@ -1,11 +1,21 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import ExerciseProgressJournal from "@/components/dashboard/clients/ExerciseProgressJournal";
+import ClientWorkoutCalendar from "@/components/dashboard/clients/WorkoutCalendar";
 import RoutineDayToggle from "@/components/dashboard/routines/RoutineDayToggle";
 import RoutineSeriesBlock from "@/components/dashboard/routines/RoutineSeriesBlock";
+import {
+  type ExerciseProgressEntry,
+  sortProgressEntries,
+} from "@/lib/exercise-progress";
 import { sortWorkoutDays, WEEK_DAYS } from "@/lib/workout-days";
+import {
+  getMexicoCityDateKey,
+  type WorkoutCompletionEntry,
+} from "@/lib/workout-calendar";
 import {
   buildWorkoutExerciseBlocks,
   flattenWorkoutExerciseBlocks,
@@ -50,6 +60,7 @@ type WorkoutDay = {
   day_of_week: string | null;
   notes: string | null;
   created_at: string;
+  schedule_started_on: string | null;
   exercises: WorkoutExercise[];
 };
 
@@ -57,6 +68,13 @@ type RoutineManagerProps = {
   client: ClientInfo;
   initialDays: WorkoutDay[];
   exercises: Exercise[];
+  initialProgressEntries: ExerciseProgressEntry[];
+  progressStorageReady: boolean;
+  progressWeightUnitsReady: boolean;
+  initialWorkoutCompletions: WorkoutCompletionEntry[];
+  workoutTrackingStartedOn: string;
+  workoutCalendarReady: boolean;
+  todayInMexico: string;
 };
 
 function getYouTubeEmbedUrl(url: string) {
@@ -91,6 +109,13 @@ export default function RoutineManager({
   client,
   initialDays,
   exercises,
+  initialProgressEntries,
+  progressStorageReady,
+  progressWeightUnitsReady,
+  initialWorkoutCompletions,
+  workoutTrackingStartedOn,
+  workoutCalendarReady,
+  todayInMexico,
 }: RoutineManagerProps) {
   const supabase = createClient();
 
@@ -110,6 +135,9 @@ export default function RoutineManager({
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [selectedExerciseName, setSelectedExerciseName] = useState("");
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
+  const [openProgressItemId, setOpenProgressItemId] = useState<string | null>(
+    null
+  );
   const [seriesSelectionDayId, setSeriesSelectionDayId] = useState<
     string | null
   >(null);
@@ -117,8 +145,47 @@ export default function RoutineManager({
     string[]
   >([]);
   const [loadingSeries, setLoadingSeries] = useState(false);
+  const [calendarToday, setCalendarToday] = useState(todayInMexico);
+
+  useEffect(() => {
+    setDays(initialDays);
+  }, [initialDays]);
+
+  useEffect(() => {
+    function syncCalendarDate() {
+      setCalendarToday(getMexicoCityDateKey());
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") syncCalendarDate();
+    }
+
+    syncCalendarDate();
+    const dateInterval = window.setInterval(syncCalendarDate, 60_000);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(dateInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   const orderedDays = useMemo(() => sortWorkoutDays(days), [days]);
+  const progressByExerciseId = useMemo(() => {
+    const entriesByExercise = new Map<string, ExerciseProgressEntry[]>();
+
+    initialProgressEntries.forEach((entry) => {
+      const exerciseEntries = entriesByExercise.get(entry.exercise_id) ?? [];
+      exerciseEntries.push(entry);
+      entriesByExercise.set(entry.exercise_id, exerciseEntries);
+    });
+
+    entriesByExercise.forEach((entries, exerciseId) => {
+      entriesByExercise.set(exerciseId, sortProgressEntries(entries));
+    });
+
+    return entriesByExercise;
+  }, [initialProgressEntries]);
 
   const filteredExercises = useMemo(() => {
     const query = exerciseSearch.toLowerCase().trim();
@@ -179,6 +246,9 @@ export default function RoutineManager({
 
     const newDay: WorkoutDay = {
       ...(data as Omit<WorkoutDay, "exercises">),
+      schedule_started_on:
+        (data as Partial<WorkoutDay>).schedule_started_on ??
+        getMexicoCityDateKey(),
       exercises: [],
     };
 
@@ -343,6 +413,10 @@ export default function RoutineManager({
 
         return {
           ...day,
+          schedule_started_on:
+            day.exercises.length === 0
+              ? getMexicoCityDateKey()
+              : day.schedule_started_on,
           exercises: [...day.exercises, newWorkoutExercise],
         };
       })
@@ -674,6 +748,7 @@ export default function RoutineManager({
 
   function toggleDay(dayId: string) {
     setExpandedDayId((current) => (current === dayId ? null : dayId));
+    setOpenProgressItemId(null);
     setOpenExerciseFormDayId(null);
     setEditingDayId(null);
     setEditingExerciseId(null);
@@ -734,6 +809,18 @@ export default function RoutineManager({
           {message}
         </p>
       )}
+
+      <div id="calendario" className="mt-5 scroll-mt-28">
+        <ClientWorkoutCalendar
+          days={days}
+          completions={initialWorkoutCompletions}
+          trackingStartedOn={workoutTrackingStartedOn}
+          storageReady={workoutCalendarReady}
+          savingKey={null}
+          readOnly
+          today={calendarToday}
+        />
+      </div>
 
       {dayFormOpen && (
         <form
@@ -973,7 +1060,7 @@ export default function RoutineManager({
                 <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                   <input name="sets" placeholder="Series" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-[var(--text)] outline-none" />
                   <input name="reps" placeholder="Reps" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-[var(--text)] outline-none" />
-                  <input name="weight" placeholder="Peso" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-[var(--text)] outline-none" />
+                  <input name="weight" placeholder="Peso (kg o lb)" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-[var(--text)] outline-none" />
                   <input name="rest" placeholder="Descanso" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-[var(--text)] outline-none" />
                   <input name="rir" placeholder="RIR" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-[var(--text)] outline-none" />
                 </div>
@@ -1065,6 +1152,11 @@ export default function RoutineManager({
               {exerciseBlocks.map((block) => {
                 const exerciseCards = block.exercises.map((item, index) => {
                   const selected = selectedSeriesExerciseIds.includes(item.id);
+                  const exerciseProgress = item.exercise
+                    ? progressByExerciseId.get(item.exercise.id) ?? []
+                    : [];
+                  const progressPanelId = `coach-progress-panel-${item.id}`;
+                  const progressOpen = openProgressItemId === item.id;
 
                   return (
                     <div
@@ -1150,6 +1242,25 @@ export default function RoutineManager({
                     </div>
 
                     <div className="flex flex-col gap-3 lg:items-end">
+                      {item.exercise && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenProgressItemId((current) =>
+                              current === item.id ? null : item.id
+                            )
+                          }
+                          aria-expanded={progressOpen}
+                          aria-controls={progressPanelId}
+                          aria-label={`${progressOpen ? "Cerrar" : "Abrir"} bitácora de ${
+                            item.exercise.name
+                          }`}
+                          className="rounded-2xl bg-[var(--button-bg)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--button-text)] transition active:scale-95"
+                        >
+                          {progressOpen ? "Cerrar bitácora" : "Ver bitácora"}
+                        </button>
+                      )}
+
                       {item.exercise?.video_url && (
                         <button
                           type="button"
@@ -1217,7 +1328,7 @@ export default function RoutineManager({
                       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                         <input name="sets" defaultValue={item.sets ?? ""} placeholder="Series" className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none" />
                         <input name="reps" defaultValue={item.reps ?? ""} placeholder="Reps" className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none" />
-                        <input name="weight" defaultValue={item.weight ?? ""} placeholder="Peso" className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none" />
+                        <input name="weight" defaultValue={item.weight ?? ""} placeholder="Peso (kg o lb)" className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none" />
                         <input name="rest" defaultValue={item.rest ?? ""} placeholder="Descanso" className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none" />
                         <input name="rir" defaultValue={item.rir ?? ""} placeholder="RIR" className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-5 py-4 text-[var(--text)] outline-none" />
                       </div>
@@ -1248,6 +1359,22 @@ export default function RoutineManager({
                         </button>
                       </div>
                     </form>
+                  )}
+
+                  {progressOpen && item.exercise && (
+                    <div className="mt-5">
+                      <ExerciseProgressJournal
+                        panelId={progressPanelId}
+                        clientId={client.id}
+                        exerciseId={item.exercise.id}
+                        workoutExerciseId={item.id}
+                        exerciseName={item.exercise.name}
+                        entries={exerciseProgress}
+                        storageReady={progressStorageReady}
+                        weightUnitsReady={progressWeightUnitsReady}
+                        readOnly
+                      />
+                    </div>
                   )}
                     </div>
                   );

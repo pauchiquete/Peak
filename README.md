@@ -20,8 +20,11 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 Ejecuta las actualizaciones desde el SQL Editor de Supabase antes de usar cada función:
 
-1. [`supabase/series-groups.sql`](supabase/series-groups.sql) activa biseries, triseries y grupos combinados.
-2. [`supabase/exercise-progress.sql`](supabase/exercise-progress.sql) activa la bitácora del cliente y los recordatorios quincenales.
+1. [`supabase/series-groups.sql`](supabase/series-groups.sql) activa biseries, triseries y grupos combinados en las rutinas de clientes.
+2. [`supabase/template-series-groups.sql`](supabase/template-series-groups.sql) activa esos grupos en las rutinas predeterminadas. Al aplicar una plantilla, cada grupo recibe un identificador nuevo para no mezclar rutinas distintas.
+3. [`supabase/exercise-progress.sql`](supabase/exercise-progress.sql) activa la bitácora del cliente y los recordatorios quincenales.
+4. [`supabase/progress-weight-units.sql`](supabase/progress-weight-units.sql) permite registrar cada carga en kilogramos o libras y conserva la unidad elegida. Ejecuta este archivo si la bitácora ya estaba instalada.
+5. [`supabase/workout-day-completions.sql`](supabase/workout-day-completions.sql) activa las palomitas por rutina y el calendario mensual de entrenamientos realizados o pendientes.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

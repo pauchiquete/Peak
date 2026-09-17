@@ -75,7 +75,7 @@ export async function POST(request: Request) {
       await supabase
         .from("routine_template_exercises")
         .select(
-          "exercise_id, position, sets, reps, weight, rest, rir, notes"
+          "exercise_id, position, sets, reps, weight, rest, rir, notes, series_group_id"
         )
         .eq("template_id", templateId)
         .order("position", { ascending: true });
@@ -111,6 +111,8 @@ export async function POST(request: Request) {
     }
 
     if ((templateExercises ?? []).length > 0) {
+      const appliedSeriesGroupIds = new Map<string, string>();
+
       const rows = templateExercises!.map((item) => ({
         workout_day_id: workoutDay.id,
         exercise_id: item.exercise_id,
@@ -121,6 +123,19 @@ export async function POST(request: Request) {
         rest: item.rest,
         rir: item.rir,
         notes: item.notes,
+        series_group_id: item.series_group_id
+          ? (() => {
+              const existingGroupId = appliedSeriesGroupIds.get(
+                item.series_group_id
+              );
+
+              if (existingGroupId) return existingGroupId;
+
+              const newGroupId = crypto.randomUUID();
+              appliedSeriesGroupIds.set(item.series_group_id, newGroupId);
+              return newGroupId;
+            })()
+          : null,
       }));
 
       const { error: insertExercisesError } = await supabase
@@ -128,8 +143,19 @@ export async function POST(request: Request) {
         .insert(rows);
 
       if (insertExercisesError) {
+        const { error: cleanupError } = await supabase
+          .from("workout_days")
+          .delete()
+          .eq("id", workoutDay.id)
+          .eq("client_id", clientId)
+          .eq("coach_id", user.id);
+
         return NextResponse.json(
-          { error: insertExercisesError.message },
+          {
+            error: cleanupError
+              ? `${insertExercisesError.message} También fue necesario revisar manualmente el día de rutina que se intentó crear.`
+              : insertExercisesError.message,
+          },
           { status: 400 }
         );
       }

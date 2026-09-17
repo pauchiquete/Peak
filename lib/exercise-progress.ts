@@ -1,16 +1,86 @@
 export const PROGRESS_REMINDER_DAYS = 14;
 
+export const KILOGRAMS_PER_POUND = 0.45359237;
+
+export type WeightUnit = "kg" | "lb";
+
 export type ExerciseProgressEntry = {
   id: string;
   client_id: string;
   exercise_id: string;
   workout_exercise_id: string | null;
   weight_kg: number;
+  weight_value: number;
+  weight_unit: WeightUnit;
   reps: number | null;
   notes: string | null;
   recorded_on: string;
   created_at: string;
 };
+
+export type ExerciseProgressEntryFromDb = Omit<
+  ExerciseProgressEntry,
+  "weight_kg" | "weight_value" | "weight_unit" | "reps"
+> & {
+  weight_kg: number | string;
+  weight_value?: number | string | null;
+  weight_unit?: string | null;
+  reps: number | string | null;
+};
+
+export function isWeightUnit(value: unknown): value is WeightUnit {
+  return value === "kg" || value === "lb";
+}
+
+export function convertWeightToKg(weight: number, unit: WeightUnit) {
+  return unit === "lb" ? weight * KILOGRAMS_PER_POUND : weight;
+}
+
+export function convertWeightFromKg(weightKg: number, unit: WeightUnit) {
+  return unit === "lb" ? weightKg / KILOGRAMS_PER_POUND : weightKg;
+}
+
+export function normalizeProgressEntry(
+  entry: ExerciseProgressEntryFromDb
+): ExerciseProgressEntry {
+  const weightKg = Number(entry.weight_kg);
+  const weightUnit: WeightUnit = isWeightUnit(entry.weight_unit)
+    ? entry.weight_unit
+    : "kg";
+  const storedWeightValue =
+    entry.weight_value === null || entry.weight_value === undefined
+      ? Number.NaN
+      : Number(entry.weight_value);
+
+  return {
+    ...entry,
+    weight_kg: weightKg,
+    weight_value: Number.isFinite(storedWeightValue)
+      ? storedWeightValue
+      : convertWeightFromKg(weightKg, weightUnit),
+    weight_unit: weightUnit,
+    reps: entry.reps === null ? null : Number(entry.reps),
+  };
+}
+
+export function isMissingProgressWeightUnitsError(
+  error: { code?: string; message?: string } | null
+) {
+  if (!error) return false;
+
+  const message = error.message?.toLowerCase() ?? "";
+  const mentionsWeightUnitColumns =
+    message.includes("weight_value") || message.includes("weight_unit");
+
+  return (
+    mentionsWeightUnitColumns &&
+    (error.code === "PGRST204" ||
+      error.code === "42703" ||
+      message.includes("schema cache") ||
+      message.includes("does not exist") ||
+      message.includes("could not find"))
+  );
+}
 
 export function sortProgressEntries(
   entries: readonly ExerciseProgressEntry[]
@@ -78,6 +148,19 @@ export function formatWeight(weight: number) {
   return new Intl.NumberFormat("es-MX", {
     maximumFractionDigits: 2,
   }).format(weight);
+}
+
+export function formatProgressWeight(
+  entry: Pick<
+    ExerciseProgressEntry,
+    "weight_kg" | "weight_value" | "weight_unit"
+  >
+) {
+  const weightValue = Number.isFinite(entry.weight_value)
+    ? entry.weight_value
+    : convertWeightFromKg(entry.weight_kg, entry.weight_unit);
+
+  return `${formatWeight(weightValue)} ${entry.weight_unit}`;
 }
 
 export function formatProgressDate(date: string) {

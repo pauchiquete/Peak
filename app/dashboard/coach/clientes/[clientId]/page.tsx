@@ -2,6 +2,15 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import RoutineManager from "@/components/dashboard/routines/RoutineManager";
 import ApplyTemplateForm from "@/components/dashboard/routines/ApplyTemplateForm";
+import {
+  isMissingProgressWeightUnitsError,
+  normalizeProgressEntry,
+  type ExerciseProgressEntryFromDb,
+} from "@/lib/exercise-progress";
+import {
+  getMexicoCityDateKey,
+  type WorkoutCompletionEntry,
+} from "@/lib/workout-calendar";
 
 type Exercise = {
   id: string;
@@ -82,6 +91,79 @@ export default async function ClientRoutinePage({ params }: PageProps) {
     .order("created_at", { ascending: false });
 
   const dayIds = (workoutDays ?? []).map((day) => day.id);
+  const todayInMexico = getMexicoCityDateKey();
+
+  const { data: workoutTracking, error: workoutTrackingError } =
+    await supabase
+      .from("clients")
+      .select("workout_tracking_started_on")
+      .eq("id", client.id)
+      .eq("coach_id", user.id)
+      .maybeSingle();
+  const workoutTrackingStartedOn =
+    typeof workoutTracking?.workout_tracking_started_on === "string"
+      ? workoutTracking.workout_tracking_started_on
+      : todayInMexico;
+
+  const { data: workoutScheduleData, error: workoutScheduleError } =
+    dayIds.length > 0
+      ? await supabase
+          .from("workout_days")
+          .select("id, schedule_started_on")
+          .eq("client_id", client.id)
+          .eq("coach_id", user.id)
+          .in("id", dayIds)
+      : { data: [], error: null };
+  const scheduleStartByDayId = new Map(
+    (workoutScheduleData ?? []).map((day) => [
+      day.id,
+      typeof day.schedule_started_on === "string"
+        ? day.schedule_started_on
+        : todayInMexico,
+    ])
+  );
+
+  let initialWorkoutCompletions: WorkoutCompletionEntry[] = [];
+  let workoutCompletionError = workoutTrackingError ?? workoutScheduleError;
+
+  if (!workoutTrackingError && !workoutScheduleError && dayIds.length > 0) {
+    const completionPageSize = 1000;
+
+    for (
+      let completionOffset = 0;
+      ;
+      completionOffset += completionPageSize
+    ) {
+      const completionResult = await supabase
+        .from("workout_day_completions")
+        .select("id, client_id, workout_day_id, completed_on, created_at")
+        .eq("client_id", client.id)
+        .in("workout_day_id", dayIds)
+        .gte("completed_on", workoutTrackingStartedOn)
+        .lte("completed_on", todayInMexico)
+        .order("completed_on", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(completionOffset, completionOffset + completionPageSize - 1);
+
+      if (completionResult.error) {
+        workoutCompletionError = completionResult.error;
+        initialWorkoutCompletions = [];
+        break;
+      }
+
+      const completionPage = (completionResult.data ??
+        []) as WorkoutCompletionEntry[];
+      initialWorkoutCompletions.push(...completionPage);
+
+      if (completionPage.length < completionPageSize) break;
+    }
+  }
+
+  const workoutCalendarReady =
+    !workoutTrackingError &&
+    !workoutScheduleError &&
+    !workoutCompletionError;
 
   const { data: workoutExercises } =
     dayIds.length > 0
@@ -145,9 +227,56 @@ export default async function ClientRoutinePage({ params }: PageProps) {
     };
   });
 
+  const assignedExerciseIds = [
+    ...new Set(normalizedWorkoutExercises.map((item) => item.exercise_id)),
+  ];
+  let progressData: ExerciseProgressEntryFromDb[] = [];
+  let progressError: { code?: string; message: string } | null = null;
+  let progressWeightUnitsReady = true;
+
+  if (assignedExerciseIds.length > 0) {
+    const progressResult = await supabase
+      .from("exercise_progress_logs")
+      .select(
+        "id, client_id, exercise_id, workout_exercise_id, weight_kg, weight_value, weight_unit, reps, notes, recorded_on, created_at"
+      )
+      .eq("client_id", client.id)
+      .in("exercise_id", assignedExerciseIds)
+      .order("recorded_on", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    progressData = (progressResult.data ??
+      []) as ExerciseProgressEntryFromDb[];
+    progressError = progressResult.error;
+
+    if (isMissingProgressWeightUnitsError(progressResult.error)) {
+      progressWeightUnitsReady = false;
+
+      const legacyProgressResult = await supabase
+        .from("exercise_progress_logs")
+        .select(
+          "id, client_id, exercise_id, workout_exercise_id, weight_kg, reps, notes, recorded_on, created_at"
+        )
+        .eq("client_id", client.id)
+        .in("exercise_id", assignedExerciseIds)
+        .order("recorded_on", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      progressData = (legacyProgressResult.data ??
+        []) as ExerciseProgressEntryFromDb[];
+      progressError = legacyProgressResult.error;
+    }
+  }
+
+  const initialProgressEntries = progressData.map(normalizeProgressEntry);
+
   const daysWithExercises = (workoutDays ?? []).map((day) => {
     return {
       ...day,
+      schedule_started_on:
+        scheduleStartByDayId.get(day.id) ?? todayInMexico,
       exercises: normalizedWorkoutExercises.filter(
         (item) => item.workout_day_id === day.id
       ),
@@ -163,6 +292,13 @@ export default async function ClientRoutinePage({ params }: PageProps) {
           client={client}
           initialDays={daysWithExercises}
           exercises={exercises ?? []}
+          initialProgressEntries={initialProgressEntries}
+          progressStorageReady={!progressError}
+          progressWeightUnitsReady={progressWeightUnitsReady}
+          initialWorkoutCompletions={initialWorkoutCompletions}
+          workoutTrackingStartedOn={workoutTrackingStartedOn}
+          workoutCalendarReady={workoutCalendarReady}
+          todayInMexico={todayInMexico}
         />
       </section>
     </main>

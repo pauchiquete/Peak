@@ -3,7 +3,15 @@ import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/auth/LogoutButton";
 import ClientRoutineView from "@/components/dashboard/clients/ClientRoutineView";
 import Link from "next/link";
-import type { ExerciseProgressEntry } from "@/lib/exercise-progress";
+import {
+  isMissingProgressWeightUnitsError,
+  normalizeProgressEntry,
+  type ExerciseProgressEntryFromDb,
+} from "@/lib/exercise-progress";
+import {
+  getMexicoCityDateKey,
+  type WorkoutCompletionEntry,
+} from "@/lib/workout-calendar";
 
 type Exercise = {
   id: string;
@@ -145,6 +153,85 @@ export default async function ClientDashboardPage() {
   }
 
   const dayIds = (workoutDays ?? []).map((day) => day.id);
+  const todayInMexico = getMexicoCityDateKey();
+
+  const { data: workoutTracking, error: workoutTrackingError } =
+    dayIds.length > 0
+      ? await supabase
+          .from("clients")
+          .select("workout_tracking_started_on")
+          .eq("id", client.id)
+          .maybeSingle()
+      : { data: null, error: null };
+  const workoutTrackingStartedOn =
+    typeof workoutTracking?.workout_tracking_started_on === "string"
+      ? workoutTracking.workout_tracking_started_on
+      : todayInMexico;
+
+  const { data: workoutScheduleData, error: workoutScheduleError } =
+    dayIds.length > 0
+      ? await supabase
+          .from("workout_days")
+          .select("id, schedule_started_on")
+          .in("id", dayIds)
+      : { data: [], error: null };
+  const scheduleStartByDayId = new Map(
+    (workoutScheduleData ?? []).map((day) => [
+      day.id,
+      typeof day.schedule_started_on === "string"
+        ? day.schedule_started_on
+        : todayInMexico,
+    ])
+  );
+
+  let initialWorkoutCompletions: WorkoutCompletionEntry[] = [];
+  let workoutCompletionError = workoutTrackingError ?? workoutScheduleError;
+
+  if (
+    dayIds.length > 0 &&
+    !workoutTrackingError &&
+    !workoutScheduleError
+  ) {
+    const completionPageSize = 1000;
+
+    for (
+      let completionOffset = 0;
+      ;
+      completionOffset += completionPageSize
+    ) {
+      const completionResult = await supabase
+        .from("workout_day_completions")
+        .select("id, client_id, workout_day_id, completed_on, created_at")
+        .eq("client_id", client.id)
+        .in("workout_day_id", dayIds)
+        .gte("completed_on", workoutTrackingStartedOn)
+        .lte("completed_on", todayInMexico)
+        .order("completed_on", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(
+          completionOffset,
+          completionOffset + completionPageSize - 1
+        );
+
+      if (completionResult.error) {
+        workoutCompletionError = completionResult.error;
+        initialWorkoutCompletions = [];
+        break;
+      }
+
+      const completionPage = (completionResult.data ??
+        []) as WorkoutCompletionEntry[];
+      initialWorkoutCompletions.push(...completionPage);
+
+      if (completionPage.length < completionPageSize) break;
+    }
+  }
+
+  const workoutCalendarReady =
+    !workoutTrackingError &&
+    !workoutScheduleError &&
+    !workoutCompletionError;
 
   const { data: workoutExercises, error: exercisesError } =
     dayIds.length > 0
@@ -203,24 +290,47 @@ export default async function ClientDashboardPage() {
   const assignedExerciseIds = [
     ...new Set(normalizedWorkoutExercises.map((item) => item.exercise_id)),
   ];
-  const { data: progressData, error: progressError } =
-    assignedExerciseIds.length > 0
-      ? await supabase
-          .from("exercise_progress_logs")
-          .select(
-            "id, client_id, exercise_id, workout_exercise_id, weight_kg, reps, notes, recorded_on, created_at"
-          )
-          .eq("client_id", client.id)
-          .in("exercise_id", assignedExerciseIds)
-          .order("recorded_on", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(200)
-      : { data: [], error: null };
-  const initialProgressEntries = (progressData ?? []).map((entry) => ({
-    ...(entry as ExerciseProgressEntry),
-    weight_kg: Number(entry.weight_kg),
-    reps: entry.reps === null ? null : Number(entry.reps),
-  }));
+  let progressData: ExerciseProgressEntryFromDb[] = [];
+  let progressError: { code?: string; message: string } | null = null;
+  let progressWeightUnitsReady = true;
+
+  if (assignedExerciseIds.length > 0) {
+    const progressResult = await supabase
+      .from("exercise_progress_logs")
+      .select(
+        "id, client_id, exercise_id, workout_exercise_id, weight_kg, weight_value, weight_unit, reps, notes, recorded_on, created_at"
+      )
+      .eq("client_id", client.id)
+      .in("exercise_id", assignedExerciseIds)
+      .order("recorded_on", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    progressData = (progressResult.data ??
+      []) as ExerciseProgressEntryFromDb[];
+    progressError = progressResult.error;
+
+    if (isMissingProgressWeightUnitsError(progressResult.error)) {
+      progressWeightUnitsReady = false;
+
+      const legacyProgressResult = await supabase
+        .from("exercise_progress_logs")
+        .select(
+          "id, client_id, exercise_id, workout_exercise_id, weight_kg, reps, notes, recorded_on, created_at"
+        )
+        .eq("client_id", client.id)
+        .in("exercise_id", assignedExerciseIds)
+        .order("recorded_on", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      progressData = (legacyProgressResult.data ??
+        []) as ExerciseProgressEntryFromDb[];
+      progressError = legacyProgressResult.error;
+    }
+  }
+
+  const initialProgressEntries = progressData.map(normalizeProgressEntry);
   const { data: reminderState, error: reminderStateError } =
     assignedExerciseIds.length > 0 && !progressError
       ? await supabase
@@ -233,6 +343,8 @@ export default async function ClientDashboardPage() {
   const daysWithExercises = (workoutDays ?? []).map((day) => {
     return {
       ...day,
+      schedule_started_on:
+        scheduleStartByDayId.get(day.id) ?? todayInMexico,
       exercises: normalizedWorkoutExercises.filter(
         (item) => item.workout_day_id === day.id
       ),
@@ -259,7 +371,12 @@ export default async function ClientDashboardPage() {
           initialProgressEntries={initialProgressEntries}
           initialProgressPromptedAt={reminderState?.last_prompted_at ?? null}
           progressStorageReady={!progressError}
+          progressWeightUnitsReady={progressWeightUnitsReady}
           progressReminderReady={!reminderStateError}
+          initialWorkoutCompletions={initialWorkoutCompletions}
+          workoutTrackingStartedOn={workoutTrackingStartedOn}
+          workoutCalendarReady={workoutCalendarReady}
+          todayInMexico={todayInMexico}
         />
       </section>
     </main>

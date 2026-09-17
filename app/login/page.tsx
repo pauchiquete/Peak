@@ -76,6 +76,8 @@ export default function LoginPage() {
 
         <form
           onSubmit={handleLogin}
+          action="/login"
+          method="post"
           className="mt-10 rounded-[34px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl sm:p-8"
         >
           <label className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">

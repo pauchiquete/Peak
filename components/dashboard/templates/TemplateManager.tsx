@@ -3,6 +3,12 @@
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import RoutineSeriesBlock from "@/components/dashboard/routines/RoutineSeriesBlock";
+import {
+  buildWorkoutExerciseBlocks,
+  flattenWorkoutExerciseBlocks,
+  getSeriesLabel,
+} from "@/lib/workout-exercise-groups";
 
 type Exercise = {
   id: string;
@@ -23,6 +29,7 @@ type TemplateExercise = {
   rest: string | null;
   rir: string | null;
   notes: string | null;
+  series_group_id: string | null;
   exercise: Exercise | null;
 };
 
@@ -40,6 +47,7 @@ type RoutineTemplate = {
 type TemplateManagerProps = {
   initialTemplates: RoutineTemplate[];
   exercises: Exercise[];
+  seriesSetupRequired?: boolean;
 };
 
 const levels = ["Principiante", "Intermedio", "Avanzado", "Todos"];
@@ -47,6 +55,7 @@ const levels = ["Principiante", "Intermedio", "Avanzado", "Todos"];
 export default function TemplateManager({
   initialTemplates,
   exercises,
+  seriesSetupRequired = false,
 }: TemplateManagerProps) {
   const supabase = createClient();
 
@@ -62,6 +71,13 @@ export default function TemplateManager({
   const [exerciseSearch, setExerciseSearch] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [seriesSelectionTemplateId, setSeriesSelectionTemplateId] = useState<
+    string | null
+  >(null);
+  const [selectedSeriesExerciseIds, setSelectedSeriesExerciseIds] = useState<
+    string[]
+  >([]);
+  const [loadingSeries, setLoadingSeries] = useState(false);
 
   const filteredExercises = useMemo(() => {
     const query = exerciseSearch.toLowerCase().trim();
@@ -154,6 +170,10 @@ export default function TemplateManager({
     setTemplates((current) =>
       current.filter((template) => template.id !== templateId)
     );
+    setSeriesSelectionTemplateId((current) =>
+      current === templateId ? null : current
+    );
+    setSelectedSeriesExerciseIds([]);
 
     setMessage("Plantilla eliminada correctamente.");
     setLoading(false);
@@ -240,7 +260,11 @@ export default function TemplateManager({
     );
 
     const nextPosition =
-      (currentTemplate?.template_exercises.length ?? 0) + 1;
+      Math.max(
+        0,
+        ...(currentTemplate?.template_exercises.map((item) => item.position) ??
+          [])
+      ) + 1;
 
     setLoading(true);
     setMessage("");
@@ -267,8 +291,10 @@ export default function TemplateManager({
       return;
     }
 
+    const newItemData = data as Omit<TemplateExercise, "exercise">;
     const newItem: TemplateExercise = {
-      ...(data as Omit<TemplateExercise, "exercise">),
+      ...newItemData,
+      series_group_id: newItemData.series_group_id ?? null,
       exercise: selectedExercise,
     };
 
@@ -290,6 +316,194 @@ export default function TemplateManager({
     setLoading(false);
   }
 
+  function toggleSeriesSelection(templateId: string) {
+    setSeriesSelectionTemplateId((current) =>
+      current === templateId ? null : templateId
+    );
+    setSelectedSeriesExerciseIds([]);
+    setOpenExerciseFormTemplateId(null);
+    setEditingTemplateId(null);
+    setMessage("");
+  }
+
+  function toggleSeriesExercise(templateId: string, exerciseId: string) {
+    if (seriesSelectionTemplateId !== templateId) return;
+
+    const belongsToTemplate = templates
+      .find((template) => template.id === templateId)
+      ?.template_exercises.some(
+        (item) => item.id === exerciseId && !item.series_group_id
+      );
+
+    if (!belongsToTemplate) return;
+
+    setSelectedSeriesExerciseIds((current) =>
+      current.includes(exerciseId)
+        ? current.filter((id) => id !== exerciseId)
+        : [...current, exerciseId]
+    );
+  }
+
+  async function handleCreateSeriesGroup(templateId: string) {
+    if (loadingSeries || seriesSelectionTemplateId !== templateId) return;
+
+    const currentTemplate = templates.find(
+      (template) => template.id === templateId
+    );
+
+    if (!currentTemplate) return;
+
+    const previousExercises = currentTemplate.template_exercises;
+    const orderedExercises = flattenWorkoutExerciseBlocks(previousExercises);
+    const selectedIdSet = new Set(selectedSeriesExerciseIds);
+    const selectedExercises = orderedExercises.filter(
+      (item) => selectedIdSet.has(item.id) && !item.series_group_id
+    );
+
+    if (selectedExercises.length < 2) {
+      setMessage("Selecciona al menos dos ejercicios de esta plantilla.");
+      return;
+    }
+
+    const validSelectedIdSet = new Set(
+      selectedExercises.map((exercise) => exercise.id)
+    );
+    const reorderedExercises: TemplateExercise[] = [];
+    let seriesInserted = false;
+
+    orderedExercises.forEach((exercise) => {
+      if (!validSelectedIdSet.has(exercise.id)) {
+        reorderedExercises.push(exercise);
+        return;
+      }
+
+      if (!seriesInserted) {
+        reorderedExercises.push(...selectedExercises);
+        seriesInserted = true;
+      }
+    });
+
+    const seriesGroupId = crypto.randomUUID();
+    const updatedExercises = reorderedExercises.map((exercise, index) => ({
+      ...exercise,
+      position: index + 1,
+      series_group_id: validSelectedIdSet.has(exercise.id)
+        ? seriesGroupId
+        : exercise.series_group_id,
+    }));
+    const rowsToSave = updatedExercises.map((exercise) => ({
+      id: exercise.id,
+      template_id: exercise.template_id,
+      exercise_id: exercise.exercise_id,
+      position: exercise.position,
+      sets: exercise.sets,
+      reps: exercise.reps,
+      weight: exercise.weight,
+      rest: exercise.rest,
+      rir: exercise.rir,
+      notes: exercise.notes,
+      series_group_id: exercise.series_group_id,
+    }));
+
+    setLoadingSeries(true);
+    setMessage("");
+    setTemplates((current) =>
+      current.map((template) =>
+        template.id === templateId
+          ? { ...template, template_exercises: updatedExercises }
+          : template
+      )
+    );
+
+    const { error } = await supabase
+      .from("routine_template_exercises")
+      .upsert(rowsToSave, { onConflict: "id" });
+
+    if (error) {
+      setTemplates((current) =>
+        current.map((template) =>
+          template.id === templateId
+            ? { ...template, template_exercises: previousExercises }
+            : template
+        )
+      );
+
+      const missingSeriesColumn =
+        error.code === "42703" ||
+        error.code === "PGRST204" ||
+        error.message.includes("series_group_id");
+
+      setMessage(
+        missingSeriesColumn
+          ? "Falta activar las series combinadas para plantillas en Supabase. Ejecuta supabase/template-series-groups.sql y vuelve a intentarlo."
+          : "No se pudo crear la serie combinada. Los ejercicios conservaron su orden anterior."
+      );
+      setLoadingSeries(false);
+      return;
+    }
+
+    setMessage(
+      `${getSeriesLabel(selectedExercises.length)} creada correctamente en la plantilla.`
+    );
+    setSeriesSelectionTemplateId(null);
+    setSelectedSeriesExerciseIds([]);
+    setLoadingSeries(false);
+  }
+
+  async function handleUngroupSeries(
+    templateId: string,
+    seriesGroupId: string
+  ) {
+    if (loadingSeries) return;
+
+    const currentTemplate = templates.find(
+      (template) => template.id === templateId
+    );
+
+    if (!currentTemplate) return;
+
+    const previousExercises = currentTemplate.template_exercises;
+    const updatedExercises = previousExercises.map((exercise) =>
+      exercise.series_group_id === seriesGroupId
+        ? { ...exercise, series_group_id: null }
+        : exercise
+    );
+
+    setLoadingSeries(true);
+    setMessage("");
+    setTemplates((current) =>
+      current.map((template) =>
+        template.id === templateId
+          ? { ...template, template_exercises: updatedExercises }
+          : template
+      )
+    );
+
+    const { error } = await supabase
+      .from("routine_template_exercises")
+      .update({ series_group_id: null })
+      .eq("template_id", templateId)
+      .eq("series_group_id", seriesGroupId);
+
+    if (error) {
+      setTemplates((current) =>
+        current.map((template) =>
+          template.id === templateId
+            ? { ...template, template_exercises: previousExercises }
+            : template
+        )
+      );
+      setMessage(
+        "No se pudo desagrupar la serie. La plantilla conserva el grupo anterior."
+      );
+      setLoadingSeries(false);
+      return;
+    }
+
+    setMessage("Serie desagrupada correctamente en la plantilla.");
+    setLoadingSeries(false);
+  }
+
   async function handleDeleteTemplateExercise(
     templateId: string,
     itemId: string,
@@ -301,34 +515,106 @@ export default function TemplateManager({
 
     if (!confirmed) return;
 
+    const currentTemplate = templates.find(
+      (template) => template.id === templateId
+    );
+    const previousExercises = currentTemplate?.template_exercises;
+    const exerciseToDelete = previousExercises?.find(
+      (item) => item.id === itemId
+    );
+
+    if (!previousExercises || !exerciseToDelete) {
+      setMessage("No se encontró el ejercicio en esta plantilla.");
+      return;
+    }
+
+    const remainingSeriesMembers = exerciseToDelete.series_group_id
+      ? previousExercises.filter(
+          (item) =>
+            item.series_group_id === exerciseToDelete.series_group_id &&
+            item.id !== itemId
+        )
+      : [];
+    const remainingExerciseToUngroup =
+      remainingSeriesMembers.length === 1 ? remainingSeriesMembers[0] : null;
+    const updatedExercises = previousExercises
+      .filter((item) => item.id !== itemId)
+      .map((item) =>
+        item.id === remainingExerciseToUngroup?.id
+          ? { ...item, series_group_id: null }
+          : item
+      );
+
     setLoading(true);
     setMessage("");
+    setTemplates((current) =>
+      current.map((template) =>
+        template.id === templateId
+          ? { ...template, template_exercises: updatedExercises }
+          : template
+      )
+    );
+    setSelectedSeriesExerciseIds((current) =>
+      current.filter((id) => id !== itemId)
+    );
 
     const { error } = await supabase
       .from("routine_template_exercises")
       .delete()
-      .eq("id", itemId);
+      .eq("id", itemId)
+      .eq("template_id", templateId);
 
     if (error) {
-      setMessage(error.message);
+      setTemplates((current) =>
+        current.map((template) =>
+          template.id === templateId
+            ? { ...template, template_exercises: previousExercises }
+            : template
+        )
+      );
+      setMessage(
+        "No se pudo quitar el ejercicio. La plantilla conserva sus datos anteriores."
+      );
       setLoading(false);
       return;
     }
 
-    setTemplates((current) =>
-      current.map((template) =>
-        template.id === templateId
-          ? {
-              ...template,
-              template_exercises: template.template_exercises.filter(
-                (item) => item.id !== itemId
-              ),
-            }
-          : template
-      )
-    );
+    if (remainingExerciseToUngroup) {
+      const { error: ungroupError } = await supabase
+        .from("routine_template_exercises")
+        .update({ series_group_id: null })
+        .eq("id", remainingExerciseToUngroup.id)
+        .eq("template_id", templateId)
+        .eq("series_group_id", exerciseToDelete.series_group_id!);
 
-    setMessage("Ejercicio eliminado de la plantilla.");
+      if (ungroupError) {
+        const exercisesAfterDelete = previousExercises.filter(
+          (item) => item.id !== itemId
+        );
+
+        setTemplates((current) =>
+          current.map((template) =>
+            template.id === templateId
+              ? {
+                  ...template,
+                  template_exercises: exercisesAfterDelete,
+                }
+              : template
+          )
+        );
+        setMessage(
+          "El ejercicio se eliminó, pero no se pudo separar el último integrante del grupo. Intenta desagruparlo de nuevo."
+        );
+        setLoading(false);
+        return;
+      }
+    }
+
+    setMessage(
+      remainingExerciseToUngroup
+        ? "Ejercicio eliminado y serie desagrupada correctamente."
+        : "Ejercicio eliminado de la plantilla."
+    );
     setLoading(false);
   }
 
@@ -373,6 +659,19 @@ export default function TemplateManager({
       {message && (
         <p className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 text-sm font-bold text-[var(--muted)]">
           {message}
+        </p>
+      )}
+
+      {seriesSetupRequired && (
+        <p
+          role="alert"
+          className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm font-bold leading-7 text-[var(--text)]"
+        >
+          Tus plantillas siguen disponibles, pero para crear biseries o
+          triseries primero ejecuta el archivo
+          {" "}
+          <code>supabase/template-series-groups.sql</code> en Supabase y recarga
+          esta página.
         </p>
       )}
 
@@ -427,7 +726,23 @@ export default function TemplateManager({
       )}
 
       <div className="mt-5 grid gap-5">
-        {templates.map((template) => (
+        {templates.map((template) => {
+          const exerciseBlocks = buildWorkoutExerciseBlocks(
+            template.template_exercises
+          );
+          const displayPositionById = new Map<string, number>(
+            exerciseBlocks
+              .flatMap((block) => block.exercises)
+              .map((exercise, index) => [exercise.id, index + 1] as const)
+          );
+          const selectingSeries =
+            seriesSelectionTemplateId === template.id;
+          const availableForSeries = template.template_exercises.filter(
+            (exercise) => !exercise.series_group_id
+          ).length;
+          const seriesHelpId = `template-series-help-${template.id}`;
+
+          return (
           <article
             key={template.id}
             className="overflow-hidden rounded-[32px] border border-[var(--border)] bg-[var(--surface)] p-5 backdrop-blur-xl sm:p-6"
@@ -450,27 +765,55 @@ export default function TemplateManager({
                 )}
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-3 lg:w-[390px]">
+              <div className="grid gap-2 sm:grid-cols-2 lg:w-[590px] lg:grid-cols-4">
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    setSeriesSelectionTemplateId(null);
+                    setSelectedSeriesExerciseIds([]);
                     setOpenExerciseFormTemplateId((current) =>
                       current === template.id ? null : template.id
-                    )
-                  }
-                  className="rounded-2xl bg-[var(--button-bg)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[var(--button-text)]"
+                    );
+                  }}
+                  disabled={loading || loadingSeries}
+                  className="rounded-2xl bg-[var(--button-bg)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[var(--button-text)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   + Ejercicio
                 </button>
 
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => toggleSeriesSelection(template.id)}
+                  disabled={
+                    loading ||
+                    loadingSeries ||
+                    (!selectingSeries && availableForSeries < 2)
+                  }
+                  aria-pressed={selectingSeries}
+                  title={
+                    !selectingSeries && availableForSeries < 2
+                      ? "Agrega al menos dos ejercicios sin agrupar"
+                      : undefined
+                  }
+                  className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {selectingSeries
+                    ? "Cancelar selección"
+                    : "Agrupar ejercicios"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSeriesSelectionTemplateId(null);
+                    setSelectedSeriesExerciseIds([]);
+                    setOpenExerciseFormTemplateId(null);
                     setEditingTemplateId((current) =>
                       current === template.id ? null : template.id
-                    )
-                  }
-                  className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em]"
+                    );
+                  }}
+                  disabled={loading || loadingSeries}
+                  className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Editar
                 </button>
@@ -480,7 +823,8 @@ export default function TemplateManager({
                   onClick={() =>
                     handleDeleteTemplate(template.id, template.name)
                   }
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-red-500"
+                  disabled={loading || loadingSeries}
+                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Eliminar
                 </button>
@@ -566,7 +910,7 @@ export default function TemplateManager({
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <input name="sets" placeholder="Series" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm outline-none" />
                   <input name="reps" placeholder="Reps" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm outline-none" />
-                  <input name="weight" placeholder="Peso" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm outline-none" />
+                  <input name="weight" placeholder="Peso (kg o lb)" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm outline-none" />
                   <input name="rest" placeholder="Descanso" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm outline-none" />
                   <input name="rir" placeholder="RIR" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm outline-none" />
                 </div>
@@ -580,7 +924,7 @@ export default function TemplateManager({
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || loadingSeries}
                   className="mt-4 w-full rounded-2xl bg-[var(--button-bg)] px-6 py-4 text-xs font-black uppercase tracking-[0.18em] text-[var(--button-text)] disabled:opacity-50"
                 >
                   Agregar ejercicio
@@ -588,18 +932,109 @@ export default function TemplateManager({
               </form>
             )}
 
+            {selectingSeries && (
+              <div
+                id={seriesHelpId}
+                className="mt-5 rounded-[24px] border-2 border-[var(--text)] bg-[var(--surface-strong)] p-5"
+              >
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.3em] text-[var(--muted)]">
+                      Crear serie combinada
+                    </p>
+                    <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--muted)]">
+                      Selecciona dos o más ejercicios de esta plantilla. Se
+                      mostrarán juntos y conservarán el orden indicado.
+                    </p>
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className="mt-3 text-sm font-black text-[var(--text)]"
+                    >
+                      {selectedSeriesExerciseIds.length} ejercicio
+                      {selectedSeriesExerciseIds.length === 1 ? "" : "s"}{" "}
+                      seleccionado
+                      {selectedSeriesExerciseIds.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => handleCreateSeriesGroup(template.id)}
+                      disabled={
+                        selectedSeriesExerciseIds.length < 2 || loadingSeries
+                      }
+                      className="rounded-2xl bg-[var(--button-bg)] px-6 py-4 text-xs font-black uppercase tracking-[0.16em] text-[var(--button-text)] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {loadingSeries
+                        ? "Guardando..."
+                        : selectedSeriesExerciseIds.length >= 2
+                          ? `Crear ${getSeriesLabel(
+                              selectedSeriesExerciseIds.length
+                            ).toLowerCase()}`
+                          : "Selecciona ejercicios"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleSeriesSelection(template.id)}
+                      disabled={loadingSeries}
+                      className="rounded-2xl border border-[var(--border)] px-6 py-4 text-xs font-black uppercase tracking-[0.16em] text-[var(--text)] disabled:opacity-40"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="mt-5 grid gap-3">
-              {template.template_exercises.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-[22px] border border-[var(--border)] bg-[var(--bg)] p-5"
-                >
+              {exerciseBlocks.map((block) => {
+                const exerciseCards = block.exercises.map((item, index) => {
+                  const selected = selectedSeriesExerciseIds.includes(item.id);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-[22px] border border-[var(--border)] bg-[var(--bg)] p-5 ${
+                        selected ? "ring-2 ring-[var(--text)]" : ""
+                      }`}
+                    >
+                  {selectingSeries && !item.series_group_id && (
+                    <label className="mb-5 flex cursor-pointer items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-black text-[var(--text)]">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() =>
+                          toggleSeriesExercise(template.id, item.id)
+                        }
+                        aria-describedby={seriesHelpId}
+                        className="h-5 w-5 shrink-0 accent-[var(--text)]"
+                      />
+                      <span>
+                        Incluir {item.exercise?.name || "este ejercicio"} en la
+                        serie
+                      </span>
+                    </label>
+                  )}
+
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--muted)]">
-                        {item.position.toString().padStart(2, "0")} ·{" "}
-                        {item.exercise?.muscle_group || "Ejercicio"}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--muted)]">
+                          {(displayPositionById.get(item.id) ?? item.position)
+                            .toString()
+                            .padStart(2, "0")} ·{" "}
+                          {item.exercise?.muscle_group || "Ejercicio"}
+                        </p>
+
+                        {block.seriesGroupId && (
+                          <span className="rounded-full bg-[var(--text)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--bg)]">
+                            Paso {index + 1} de {block.exercises.length}
+                          </span>
+                        )}
+                      </div>
 
                       <h3 className="mt-2 text-2xl font-black">
                         {item.exercise?.name || "Ejercicio"}
@@ -647,13 +1082,31 @@ export default function TemplateManager({
                           item.exercise?.name || "este ejercicio"
                         )
                       }
-                      className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-red-500"
+                      disabled={loading || loadingSeries}
+                      className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Quitar
                     </button>
                   </div>
-                </div>
-              ))}
+                    </div>
+                  );
+                });
+
+                return block.seriesGroupId ? (
+                  <RoutineSeriesBlock
+                    key={block.id}
+                    exerciseCount={block.exercises.length}
+                    onUngroup={() =>
+                      handleUngroupSeries(template.id, block.seriesGroupId!)
+                    }
+                    ungrouping={loadingSeries}
+                  >
+                    {exerciseCards}
+                  </RoutineSeriesBlock>
+                ) : (
+                  exerciseCards[0]
+                );
+              })}
 
               {template.template_exercises.length === 0 && (
                 <div className="rounded-[22px] border border-dashed border-[var(--border)] p-6 text-center">
@@ -664,7 +1117,8 @@ export default function TemplateManager({
               )}
             </div>
           </article>
-        ))}
+          );
+        })}
 
         {templates.length === 0 && (
           <div className="rounded-[30px] border border-[var(--border)] bg-[var(--surface)] p-8 text-center backdrop-blur-xl">

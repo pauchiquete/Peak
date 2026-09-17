@@ -1,20 +1,33 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import RoutineDayToggle from "@/components/dashboard/routines/RoutineDayToggle";
 import RoutineSeriesBlock from "@/components/dashboard/routines/RoutineSeriesBlock";
 import ExerciseProgressJournal from "@/components/dashboard/clients/ExerciseProgressJournal";
+import ClientWorkoutCalendar, {
+  getWorkoutCalendarSavingKey,
+} from "@/components/dashboard/clients/WorkoutCalendar";
 import { createClient } from "@/lib/supabase/client";
 import { sortWorkoutDays } from "@/lib/workout-days";
 import { buildWorkoutExerciseBlocks } from "@/lib/workout-exercise-groups";
 import {
-  ExerciseProgressEntry,
+  type ExerciseProgressEntry,
   formatProgressDate,
-  formatWeight,
+  formatProgressWeight,
   getProgressReminder,
   isBiweeklyProgressPromptDue,
   sortProgressEntries,
 } from "@/lib/exercise-progress";
+import {
+  addDaysToDateKey,
+  formatWorkoutCalendarDate,
+  getCurrentWeekScheduledDate,
+  getMexicoCityDateKey,
+  getWorkoutCompletionKey,
+  getWorkoutDayStartDate,
+  getWorkoutWeekDayIndex,
+  type WorkoutCompletionEntry,
+} from "@/lib/workout-calendar";
 
 type Exercise = {
   id: string;
@@ -44,6 +57,8 @@ type WorkoutDay = {
   title: string;
   day_of_week: string | null;
   notes: string | null;
+  created_at: string;
+  schedule_started_on: string | null;
   exercises: WorkoutExercise[];
 };
 
@@ -60,7 +75,12 @@ type ClientRoutineViewProps = {
   initialProgressEntries: ExerciseProgressEntry[];
   initialProgressPromptedAt: string | null;
   progressStorageReady: boolean;
+  progressWeightUnitsReady: boolean;
   progressReminderReady: boolean;
+  initialWorkoutCompletions: WorkoutCompletionEntry[];
+  workoutTrackingStartedOn: string;
+  workoutCalendarReady: boolean;
+  todayInMexico: string;
 };
 
 type ClientExerciseCardProps = {
@@ -147,7 +167,7 @@ function ClientExerciseCard({
 
           {latestProgress && (
             <p className="mt-4 text-sm font-black text-[var(--text)]">
-              Último avance: {formatWeight(latestProgress.weight_kg)} kg
+              Último avance: {formatProgressWeight(latestProgress)}
               {latestProgress.reps ? ` · ${latestProgress.reps} reps` : ""}
               <span className="ml-2 font-bold text-[var(--muted)]">
                 {formatProgressDate(latestProgress.recorded_on)}
@@ -228,7 +248,12 @@ export default function ClientRoutineView({
   initialProgressEntries,
   initialProgressPromptedAt,
   progressStorageReady,
+  progressWeightUnitsReady,
   progressReminderReady,
+  initialWorkoutCompletions,
+  workoutTrackingStartedOn,
+  workoutCalendarReady,
+  todayInMexico,
 }: ClientRoutineViewProps) {
   const [supabase] = useState(() => createClient());
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
@@ -245,6 +270,38 @@ export default function ClientRoutineView({
   );
   const [acknowledgingPrompt, setAcknowledgingPrompt] = useState(false);
   const [promptError, setPromptError] = useState("");
+  const [workoutCompletions, setWorkoutCompletions] = useState(
+    initialWorkoutCompletions
+  );
+  const [workoutCalendarStorageReady, setWorkoutCalendarStorageReady] =
+    useState(workoutCalendarReady);
+  const [completionSavingKey, setCompletionSavingKey] = useState<string | null>(
+    null
+  );
+  const [completionMessage, setCompletionMessage] = useState("");
+  const [calendarToday, setCalendarToday] = useState(todayInMexico);
+
+  useEffect(() => {
+    function syncCalendarDate() {
+      setCalendarToday(getMexicoCityDateKey());
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") syncCalendarDate();
+    }
+
+    syncCalendarDate();
+    const dateInterval = window.setInterval(syncCalendarDate, 60_000);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(dateInterval);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, []);
 
   const orderedDays = useMemo(() => sortWorkoutDays(days), [days]);
   const progressByExerciseId = useMemo(() => {
@@ -288,6 +345,24 @@ export default function ClientRoutineView({
       progressReminderReady,
     ]
   );
+  const workoutCompletionKeys = useMemo(
+    () =>
+      new Set(
+        workoutCompletions.map((entry) =>
+          getWorkoutCompletionKey(entry.workout_day_id, entry.completed_on)
+        )
+      ),
+    [workoutCompletions]
+  );
+  const hasCalendarDays = useMemo(
+    () =>
+      days.some(
+        (day) =>
+          day.exercises.length > 0 &&
+          getWorkoutWeekDayIndex(day.day_of_week) !== -1
+      ),
+    [days]
+  );
 
   function openVideo(exercise: Exercise | null) {
     if (!exercise?.video_url) return;
@@ -325,6 +400,73 @@ export default function ClientRoutineView({
       typeof data === "string" ? data : new Date().toISOString()
     );
     setAcknowledgingPrompt(false);
+  }
+
+  async function handleToggleWorkoutCompletion(
+    workoutDayId: string,
+    completedOn: string,
+    nextCompleted: boolean
+  ) {
+    if (!workoutCalendarStorageReady || completionSavingKey) return;
+
+    const savingKey = getWorkoutCalendarSavingKey(
+      workoutDayId,
+      completedOn
+    );
+    setCompletionSavingKey(savingKey);
+    setCompletionMessage("");
+
+    const { error } = await supabase.rpc("set_workout_day_completed", {
+      target_workout_day_id: workoutDayId,
+      target_completed_on: completedOn,
+      target_completed: nextCompleted,
+    });
+
+    if (error) {
+      const missingStorage =
+        error.code === "PGRST202" ||
+        error.code === "42883" ||
+        error.message.toLowerCase().includes("set_workout_day_completed");
+
+      if (missingStorage) setWorkoutCalendarStorageReady(false);
+
+      setCompletionMessage(
+        missingStorage
+          ? "El calendario necesita la actualización pendiente de Supabase."
+          : "No se pudo actualizar este entrenamiento. Inténtalo de nuevo."
+      );
+      setCompletionSavingKey(null);
+      return;
+    }
+
+    setWorkoutCompletions((current) => {
+      const withoutTarget = current.filter(
+        (entry) =>
+          getWorkoutCompletionKey(
+            entry.workout_day_id,
+            entry.completed_on
+          ) !== savingKey
+      );
+
+      if (!nextCompleted) return withoutTarget;
+
+      return [
+        {
+          id: savingKey,
+          client_id: client.id,
+          workout_day_id: workoutDayId,
+          completed_on: completedOn,
+          created_at: new Date().toISOString(),
+        },
+        ...withoutTarget,
+      ];
+    });
+    setCompletionMessage(
+      nextCompleted
+        ? "¡Entrenamiento completado! Tu calendario ya está en verde."
+        : "Quitamos la palomita de esa fecha."
+    );
+    setCompletionSavingKey(null);
   }
 
   return (
@@ -396,6 +538,30 @@ export default function ClientRoutineView({
         </div>
       )}
 
+      {hasCalendarDays && (
+        <div className="mt-5">
+          <ClientWorkoutCalendar
+            days={days}
+            completions={workoutCompletions}
+            trackingStartedOn={workoutTrackingStartedOn}
+            storageReady={workoutCalendarStorageReady}
+            savingKey={completionSavingKey}
+            onToggleCompletion={handleToggleWorkoutCompletion}
+            today={calendarToday}
+          />
+
+          {completionMessage && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="mt-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-bold text-[var(--muted)]"
+            >
+              {completionMessage}
+            </p>
+          )}
+        </div>
+      )}
+
       {days.length > 0 && (
         <p className="mt-7 text-sm font-bold text-[var(--muted)]">
           Selecciona un día para ver la rutina completa.
@@ -413,6 +579,34 @@ export default function ClientRoutineView({
               .flatMap((block) => block.exercises)
               .map((exercise, index) => [exercise.id, index + 1] as const)
           );
+          const completionTrackingStart = getWorkoutDayStartDate(
+            day,
+            workoutTrackingStartedOn
+          );
+          const currentWeekCompletionDate = getCurrentWeekScheduledDate(
+            day.day_of_week,
+            calendarToday
+          );
+          const completionDate =
+            currentWeekCompletionDate &&
+            currentWeekCompletionDate < completionTrackingStart
+              ? addDaysToDateKey(currentWeekCompletionDate, 7)
+              : currentWeekCompletionDate;
+          const completionAvailable =
+            day.exercises.length > 0 &&
+            completionDate !== null &&
+            completionDate >= completionTrackingStart;
+          const completionIsFuture =
+            completionDate !== null && completionDate > calendarToday;
+          const dayCompletionKey = completionDate
+            ? getWorkoutCompletionKey(day.id, completionDate)
+            : null;
+          const dayCompleted = dayCompletionKey
+            ? workoutCompletionKeys.has(dayCompletionKey)
+            : false;
+          const dayCompletionSaving =
+            dayCompletionKey !== null &&
+            completionSavingKey === dayCompletionKey;
 
           return (
             <article
@@ -494,6 +688,7 @@ export default function ClientRoutineView({
                               exerciseName={item.exercise.name}
                               entries={exerciseProgress}
                               storageReady={progressStorageReady}
+                              weightUnitsReady={progressWeightUnitsReady}
                               onEntryAdded={handleProgressEntryAdded}
                               onEntryDeleted={handleProgressEntryDeleted}
                             />
@@ -524,6 +719,63 @@ export default function ClientRoutineView({
                     </div>
                   )}
                 </div>
+
+                {completionAvailable && completionDate && (
+                  <div className="mt-5 flex flex-col gap-4 rounded-[24px] border border-[var(--border)] bg-[var(--bg)] p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--muted)]">
+                        Palomita de esta semana
+                      </p>
+                      <p className="mt-2 font-black text-[var(--text)]">
+                        {formatWorkoutCalendarDate(completionDate, {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                        })}
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">
+                        {completionIsFuture
+                          ? "Podrás marcarla cuando llegue ese día."
+                          : dayCompleted
+                            ? "Esta rutina ya aparece en verde en tu calendario."
+                            : "Cuando termines, marca la rutina como realizada."}
+                      </p>
+                    </div>
+
+                    {completionIsFuture ? (
+                      <span className="shrink-0 rounded-full border border-[var(--border)] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[var(--muted)]">
+                        Próximamente
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleToggleWorkoutCompletion(
+                            day.id,
+                            completionDate,
+                            !dayCompleted
+                          )
+                        }
+                        disabled={
+                          !workoutCalendarStorageReady ||
+                          completionSavingKey !== null
+                        }
+                        aria-pressed={dayCompleted}
+                        className={`shrink-0 rounded-2xl px-5 py-3 text-xs font-black uppercase tracking-[0.14em] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
+                          dayCompleted
+                            ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            : "bg-[var(--button-bg)] text-[var(--button-text)]"
+                        }`}
+                      >
+                        {dayCompletionSaving
+                          ? "Guardando..."
+                          : dayCompleted
+                            ? "✓ Completada"
+                            : "✓ Marcar como hecha"}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             </article>
