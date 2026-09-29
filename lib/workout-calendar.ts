@@ -10,6 +10,17 @@ export type WorkoutCompletionEntry = {
   created_at: string;
 };
 
+export type WorkoutCalendarEntry = {
+  id: string;
+  client_id: string;
+  workout_day_id: string;
+  workout_title: string;
+  day_of_week: string | null;
+  scheduled_on: string;
+  completed_at: string | null;
+  created_at: string;
+};
+
 export type WorkoutCalendarDay = {
   id: string;
   title: string;

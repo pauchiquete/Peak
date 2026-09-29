@@ -26,6 +26,7 @@ import {
   getWorkoutCompletionKey,
   getWorkoutDayStartDate,
   getWorkoutWeekDayIndex,
+  type WorkoutCalendarEntry,
   type WorkoutCompletionEntry,
 } from "@/lib/workout-calendar";
 
@@ -78,6 +79,7 @@ type ClientRoutineViewProps = {
   progressWeightUnitsReady: boolean;
   progressReminderReady: boolean;
   initialWorkoutCompletions: WorkoutCompletionEntry[];
+  initialWorkoutCalendarEntries: WorkoutCalendarEntry[];
   workoutTrackingStartedOn: string;
   workoutCalendarReady: boolean;
   todayInMexico: string;
@@ -251,6 +253,7 @@ export default function ClientRoutineView({
   progressWeightUnitsReady,
   progressReminderReady,
   initialWorkoutCompletions,
+  initialWorkoutCalendarEntries,
   workoutTrackingStartedOn,
   workoutCalendarReady,
   todayInMexico,
@@ -272,6 +275,9 @@ export default function ClientRoutineView({
   const [promptError, setPromptError] = useState("");
   const [workoutCompletions, setWorkoutCompletions] = useState(
     initialWorkoutCompletions
+  );
+  const [workoutCalendarEntries, setWorkoutCalendarEntries] = useState(
+    initialWorkoutCalendarEntries
   );
   const [workoutCalendarStorageReady, setWorkoutCalendarStorageReady] =
     useState(workoutCalendarReady);
@@ -356,12 +362,13 @@ export default function ClientRoutineView({
   );
   const hasCalendarDays = useMemo(
     () =>
+      workoutCalendarEntries.length > 0 ||
       days.some(
         (day) =>
           day.exercises.length > 0 &&
           getWorkoutWeekDayIndex(day.day_of_week) !== -1
       ),
-    [days]
+    [days, workoutCalendarEntries.length]
   );
 
   function openVideo(exercise: Exercise | null) {
@@ -437,6 +444,37 @@ export default function ClientRoutineView({
       );
       setCompletionSavingKey(null);
       return;
+    }
+
+    const historyResult = await supabase
+      .from("workout_calendar_entries")
+      .select(
+        "id, client_id, workout_day_id, workout_title, day_of_week, scheduled_on, completed_at, created_at"
+      )
+      .eq("client_id", client.id)
+      .eq("scheduled_on", completedOn)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (!historyResult.error) {
+      const refreshedEntries = (historyResult.data ??
+        []) as WorkoutCalendarEntry[];
+
+      setWorkoutCalendarEntries((current) => [
+        ...current.filter((entry) => entry.scheduled_on !== completedOn),
+        ...refreshedEntries,
+      ]);
+    } else {
+      const completedAt = nextCompleted ? new Date().toISOString() : null;
+
+      setWorkoutCalendarEntries((current) =>
+        current.map((entry) =>
+          entry.workout_day_id === workoutDayId &&
+          entry.scheduled_on === completedOn
+            ? { ...entry, completed_at: completedAt }
+            : entry
+        )
+      );
     }
 
     setWorkoutCompletions((current) => {
@@ -543,6 +581,7 @@ export default function ClientRoutineView({
           <ClientWorkoutCalendar
             days={days}
             completions={workoutCompletions}
+            historyEntries={workoutCalendarEntries}
             trackingStartedOn={workoutTrackingStartedOn}
             storageReady={workoutCalendarStorageReady}
             savingKey={completionSavingKey}

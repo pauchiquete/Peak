@@ -10,6 +10,7 @@ import {
 } from "@/lib/exercise-progress";
 import {
   getMexicoCityDateKey,
+  type WorkoutCalendarEntry,
   type WorkoutCompletionEntry,
 } from "@/lib/workout-calendar";
 
@@ -156,13 +157,11 @@ export default async function ClientDashboardPage() {
   const todayInMexico = getMexicoCityDateKey();
 
   const { data: workoutTracking, error: workoutTrackingError } =
-    dayIds.length > 0
-      ? await supabase
-          .from("clients")
-          .select("workout_tracking_started_on")
-          .eq("id", client.id)
-          .maybeSingle()
-      : { data: null, error: null };
+    await supabase
+      .from("clients")
+      .select("workout_tracking_started_on")
+      .eq("id", client.id)
+      .maybeSingle();
   const workoutTrackingStartedOn =
     typeof workoutTracking?.workout_tracking_started_on === "string"
       ? workoutTracking.workout_tracking_started_on
@@ -228,10 +227,50 @@ export default async function ClientDashboardPage() {
     }
   }
 
+  const { error: workoutHistorySyncError } =
+    !workoutTrackingError && !workoutScheduleError
+      ? await supabase.rpc("sync_workout_calendar_history", {
+          target_client_id: client.id,
+        })
+      : { error: null };
+  let initialWorkoutCalendarEntries: WorkoutCalendarEntry[] = [];
+  let workoutHistoryError = workoutHistorySyncError;
+
+  if (!workoutHistoryError) {
+    const historyPageSize = 1000;
+
+    for (let historyOffset = 0; ; historyOffset += historyPageSize) {
+      const historyResult = await supabase
+        .from("workout_calendar_entries")
+        .select(
+          "id, client_id, workout_day_id, workout_title, day_of_week, scheduled_on, completed_at, created_at"
+        )
+        .eq("client_id", client.id)
+        .gte("scheduled_on", workoutTrackingStartedOn)
+        .lte("scheduled_on", todayInMexico)
+        .order("scheduled_on", { ascending: false })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(historyOffset, historyOffset + historyPageSize - 1);
+
+      if (historyResult.error) {
+        workoutHistoryError = historyResult.error;
+        initialWorkoutCalendarEntries = [];
+        break;
+      }
+
+      const historyPage = (historyResult.data ?? []) as WorkoutCalendarEntry[];
+      initialWorkoutCalendarEntries.push(...historyPage);
+
+      if (historyPage.length < historyPageSize) break;
+    }
+  }
+
   const workoutCalendarReady =
     !workoutTrackingError &&
     !workoutScheduleError &&
-    !workoutCompletionError;
+    !workoutCompletionError &&
+    !workoutHistoryError;
 
   const { data: workoutExercises, error: exercisesError } =
     dayIds.length > 0
@@ -374,6 +413,7 @@ export default async function ClientDashboardPage() {
           progressWeightUnitsReady={progressWeightUnitsReady}
           progressReminderReady={!reminderStateError}
           initialWorkoutCompletions={initialWorkoutCompletions}
+          initialWorkoutCalendarEntries={initialWorkoutCalendarEntries}
           workoutTrackingStartedOn={workoutTrackingStartedOn}
           workoutCalendarReady={workoutCalendarReady}
           todayInMexico={todayInMexico}

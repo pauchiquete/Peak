@@ -6,10 +6,10 @@ import {
   formatWorkoutCalendarDate,
   getMexicoCityDateKey,
   getScheduledWorkoutDaysForDate,
-  getWorkoutCalendarStatus,
   getWorkoutCompletionKey,
   parseDateKey,
   type WorkoutCalendarDay,
+  type WorkoutCalendarEntry,
   type WorkoutCompletionEntry,
 } from "@/lib/workout-calendar";
 
@@ -20,9 +20,19 @@ export type ClientWorkoutCompletion = Pick<
   "workout_day_id" | "completed_on"
 >;
 
+export type ClientWorkoutCalendarEntry = WorkoutCalendarEntry;
+
+type AssignedWorkoutDay = {
+  id: string;
+  title: string;
+  completed: boolean;
+  canToggle: boolean;
+};
+
 export type ClientWorkoutCalendarProps = {
   days: readonly ClientWorkoutCalendarDay[];
   completions: readonly ClientWorkoutCompletion[];
+  historyEntries: readonly ClientWorkoutCalendarEntry[];
   trackingStartedOn: string | null;
   storageReady: boolean;
   savingKey: string | null;
@@ -67,6 +77,7 @@ export function getWorkoutCalendarSavingKey(workoutDayId: string, date: string) 
 export default function ClientWorkoutCalendar({
   days,
   completions = [],
+  historyEntries = [],
   trackingStartedOn,
   storageReady,
   savingKey,
@@ -129,19 +140,19 @@ export default function ClientWorkoutCalendar({
     return keys;
   }, [completions]);
 
-  const completionDayIdsByDate = useMemo(() => {
-    const idsByDate = new Map<string, Set<string>>();
+  const historyEntriesByDate = useMemo(() => {
+    const entriesByDate = new Map<string, ClientWorkoutCalendarEntry[]>();
 
-    completions.forEach((completion) => {
-      if (!parseDateKey(completion.completed_on)) return;
+    historyEntries.forEach((entry) => {
+      if (!parseDateKey(entry.scheduled_on)) return;
 
-      const dayIds = idsByDate.get(completion.completed_on) ?? new Set();
-      dayIds.add(completion.workout_day_id);
-      idsByDate.set(completion.completed_on, dayIds);
+      const dateEntries = entriesByDate.get(entry.scheduled_on) ?? [];
+      dateEntries.push(entry);
+      entriesByDate.set(entry.scheduled_on, dateEntries);
     });
 
-    return idsByDate;
-  }, [completions]);
+    return entriesByDate;
+  }, [historyEntries]);
 
   function getAssignedDays(dateKey: string) {
     const scheduledDays = getScheduledWorkoutDaysForDate(
@@ -149,19 +160,29 @@ export default function ClientWorkoutCalendar({
       dateKey,
       trackingStartKey
     );
-    const scheduledDayIds = new Set(scheduledDays.map((day) => day.id));
-    const historicallyCompletedDayIds =
-      completionDayIdsByDate.get(dateKey);
+    const historicalEntries = historyEntriesByDate.get(dateKey) ?? [];
 
-    if (!historicallyCompletedDayIds) return scheduledDays;
+    // Una fecha que ya tiene una fotografía histórica nunca se reconstruye
+    // con la rutina actual. Así los cambios del coach no alteran sus puntos.
+    if (historicalEntries.length > 0) {
+      const scheduledDayIds = new Set(scheduledDays.map((day) => day.id));
 
-    const historicalDays = days.filter(
-      (day) =>
-        historicallyCompletedDayIds.has(day.id) &&
-        !scheduledDayIds.has(day.id)
-    );
+      return historicalEntries.map<AssignedWorkoutDay>((entry) => ({
+        id: entry.workout_day_id,
+        title: entry.workout_title,
+        completed: Boolean(entry.completed_at),
+        canToggle: scheduledDayIds.has(entry.workout_day_id),
+      }));
+    }
 
-    return [...scheduledDays, ...historicalDays];
+    return scheduledDays.map<AssignedWorkoutDay>((day) => ({
+      id: day.id,
+      title: day.title,
+      completed: completedKeys.has(
+        getWorkoutCalendarSavingKey(day.id, dateKey)
+      ),
+      canToggle: true,
+    }));
   }
 
   const calendarDates = useMemo(() => {
@@ -196,11 +217,7 @@ export default function ClientWorkoutCalendar({
 
       eligibleDates += 1;
 
-      if (
-        assignedDays.every((day) =>
-          completedKeys.has(getWorkoutCalendarSavingKey(day.id, dateKey))
-        )
-      ) {
+      if (assignedDays.every((day) => day.completed)) {
         completedDates += 1;
       }
     });
@@ -212,8 +229,7 @@ export default function ClientWorkoutCalendar({
     activeDays,
     calendarDates,
     completedKeys,
-    completionDayIdsByDate,
-    days,
+    historyEntriesByDate,
     todayKey,
     trackingStartKey,
   ]);
@@ -235,15 +251,12 @@ export default function ClientWorkoutCalendar({
 
   function getDateStatus(
     dateKey: string,
-    assignedDays: readonly ClientWorkoutCalendarDay[]
+    assignedDays: readonly AssignedWorkoutDay[]
   ) {
-    return getWorkoutCalendarStatus(
-      assignedDays,
-      completions,
-      dateKey,
-      todayKey,
-      storageReady
-    );
+    if (assignedDays.length === 0) return "none";
+    if (!storageReady) return "unavailable";
+    if (assignedDays.every((day) => day.completed)) return "complete";
+    return dateKey < todayKey ? "missed" : "pending";
   }
 
   function changeMonth(amount: number) {
@@ -257,7 +270,18 @@ export default function ClientWorkoutCalendar({
   }
 
   const visibleMonthKey = formatDateKey(visibleMonth);
-  const trackingMonthKey = `${trackingStartKey.slice(0, 7)}-01`;
+  const historyStartKey = historyEntries.reduce<string | null>(
+    (earliest, entry) =>
+      !earliest || entry.scheduled_on < earliest
+        ? entry.scheduled_on
+        : earliest,
+    null
+  );
+  const calendarStartKey =
+    historyStartKey && historyStartKey < trackingStartKey
+      ? historyStartKey
+      : trackingStartKey;
+  const trackingMonthKey = `${calendarStartKey.slice(0, 7)}-01`;
   const currentMonthKey = formatDateKey(startOfMonth(resolvedToday));
   const canViewPreviousMonth = visibleMonthKey > trackingMonthKey;
   const canViewNextMonth = visibleMonthKey < currentMonthKey;
@@ -446,7 +470,7 @@ export default function ClientWorkoutCalendar({
           <div className="mt-4 grid gap-3">
             {selectedDays.map((day) => {
               const completionKey = getWorkoutCalendarSavingKey(day.id, selectedDateKey ?? "");
-              const completed = completedKeys.has(completionKey);
+              const completed = day.completed;
               const saving = savingKey === completionKey;
               const future = (selectedDateKey ?? "") > todayKey;
 
@@ -463,9 +487,14 @@ export default function ClientWorkoutCalendar({
                             ? "Pendiente de completar"
                             : "Seguimiento pendiente de activar"}
                     </p>
+                    {!day.canToggle && (
+                      <p className="mt-1 text-xs font-bold text-[var(--muted)]">
+                        Registro histórico de una rutina anterior
+                      </p>
+                    )}
                   </div>
 
-                  {!readOnly && !future && (
+                  {!readOnly && !future && day.canToggle && (
                     <button
                       type="button"
                       onClick={() => void onToggleCompletion?.(day.id, selectedDateKey ?? "", !completed)}

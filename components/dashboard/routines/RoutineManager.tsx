@@ -14,6 +14,7 @@ import {
 import { sortWorkoutDays, WEEK_DAYS } from "@/lib/workout-days";
 import {
   getMexicoCityDateKey,
+  type WorkoutCalendarEntry,
   type WorkoutCompletionEntry,
 } from "@/lib/workout-calendar";
 import {
@@ -72,6 +73,7 @@ type RoutineManagerProps = {
   progressStorageReady: boolean;
   progressWeightUnitsReady: boolean;
   initialWorkoutCompletions: WorkoutCompletionEntry[];
+  initialWorkoutCalendarEntries: WorkoutCalendarEntry[];
   workoutTrackingStartedOn: string;
   workoutCalendarReady: boolean;
   todayInMexico: string;
@@ -113,6 +115,7 @@ export default function RoutineManager({
   progressStorageReady,
   progressWeightUnitsReady,
   initialWorkoutCompletions,
+  initialWorkoutCalendarEntries,
   workoutTrackingStartedOn,
   workoutCalendarReady,
   todayInMexico,
@@ -814,6 +817,7 @@ export default function RoutineManager({
         <ClientWorkoutCalendar
           days={days}
           completions={initialWorkoutCompletions}
+          historyEntries={initialWorkoutCalendarEntries}
           trackingStartedOn={workoutTrackingStartedOn}
           storageReady={workoutCalendarReady}
           savingKey={null}

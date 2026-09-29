@@ -25,6 +25,7 @@ Ejecuta las actualizaciones desde el SQL Editor de Supabase antes de usar cada f
 3. [`supabase/exercise-progress.sql`](supabase/exercise-progress.sql) activa la bitácora del cliente y los recordatorios quincenales.
 4. [`supabase/progress-weight-units.sql`](supabase/progress-weight-units.sql) permite registrar cada carga en kilogramos o libras y conserva la unidad elegida. Ejecuta este archivo si la bitácora ya estaba instalada.
 5. [`supabase/workout-day-completions.sql`](supabase/workout-day-completions.sql) activa las palomitas por rutina y el calendario mensual de entrenamientos realizados o pendientes.
+6. [`supabase/persistent-workout-calendar.sql`](supabase/persistent-workout-calendar.sql) respalda los puntos existentes y conserva el historial aunque el entrenador edite, reemplace o elimine rutinas. Ejecútalo después del archivo anterior.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

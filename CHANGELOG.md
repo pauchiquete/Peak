@@ -1,5 +1,14 @@
 # Historial de cambios
 
+## 0.2.2 — 2026-09-28
+
+### Correcciones
+- El calendario conserva sus puntos históricos aunque el entrenador edite, cambie de día, vacíe, reemplace o elimine una rutina.
+- El respaldo inicial conserva las palomitas existentes y materializa los puntos pendientes que actualmente se calculan desde la rutina.
+
+### Base de datos
+- supabase/persistent-workout-calendar.sql
+
 ## 0.2.1 — 2026-09-17
 
 ### Mejoras
