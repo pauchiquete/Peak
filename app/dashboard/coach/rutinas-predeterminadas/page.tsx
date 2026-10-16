@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TemplateManager from "@/components/dashboard/templates/TemplateManager";
+import { loadEffectiveExercises } from "@/lib/coach-exercises";
 
 type Exercise = {
   id: string;
@@ -134,16 +135,15 @@ export default async function RoutineTemplatesPage() {
     })) as TemplateExerciseFromDb[];
   }
 
-  const { data: exercises } = await supabase
-    .from("exercises")
-    .select("id, name, muscle_group, body_region, video_url")
-    .order("name", { ascending: true });
+  const exerciseLibrary = await loadEffectiveExercises(supabase, user.id);
 
   const normalizedTemplateExercises = templateExercises.map((typedItem) => {
     return {
       ...typedItem,
       series_group_id: typedItem.series_group_id ?? null,
-      exercise: normalizeExercise(typedItem.exercise),
+      exercise:
+        exerciseLibrary.byId.get(typedItem.exercise_id) ??
+        normalizeExercise(typedItem.exercise),
     };
   });
 
@@ -157,11 +157,17 @@ export default async function RoutineTemplatesPage() {
   });
 
   return (
-    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-28 text-[var(--text)] sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
       <section className="mx-auto max-w-7xl">
+        {exerciseLibrary.setupRequired && (
+          <div className="mb-5 rounded-[24px] border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm font-bold leading-6 text-amber-700 dark:text-amber-300">
+            Ejecuta la migración multi-entrenador para activar la biblioteca
+            privada. Tus plantillas actuales permanecen intactas.
+          </div>
+        )}
         <TemplateManager
           initialTemplates={templatesWithExercises}
-          exercises={exercises ?? []}
+          exercises={exerciseLibrary.catalog}
           seriesSetupRequired={templateSeriesSetupRequired}
         />
       </section>

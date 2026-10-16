@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 const services = [
   {
     tag: "Presencial",
-    title: "Entrena con Sebastián en CDMX",
+    title: "Entrena con un coach Peak en CDMX",
     description:
       "Sesiones guiadas con corrección técnica, estructura y seguimiento directo para avanzar sin perder tiempo.",
     points: ["Corrección en tiempo real", "Plan adaptado", "Rutinas si sales de viaje"],
@@ -114,7 +114,7 @@ export default function Services() {
           className="mt-8"
         >
           <Link
-            href="/planes"
+            href="/coaches"
             className="
               inline-flex
               rounded-2xl
@@ -134,7 +134,7 @@ export default function Services() {
               active:scale-95
             "
           >
-            Ver todos los planes
+            Conoce a los coaches
           </Link>
         </motion.div>
       </div>

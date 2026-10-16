@@ -26,6 +26,46 @@ Ejecuta las actualizaciones desde el SQL Editor de Supabase antes de usar cada f
 4. [`supabase/progress-weight-units.sql`](supabase/progress-weight-units.sql) permite registrar cada carga en kilogramos o libras y conserva la unidad elegida. Ejecuta este archivo si la bitácora ya estaba instalada.
 5. [`supabase/workout-day-completions.sql`](supabase/workout-day-completions.sql) activa las palomitas por rutina y el calendario mensual de entrenamientos realizados o pendientes.
 6. [`supabase/persistent-workout-calendar.sql`](supabase/persistent-workout-calendar.sql) respalda los puntos existentes y conserva el historial aunque el entrenador edite, reemplace o elimine rutinas. Ejecútalo después del archivo anterior.
+7. [`supabase/multi-coach-platform.sql`](supabase/multi-coach-platform.sql) activa cuentas privadas por entrenador, biblioteca base con personalizaciones privadas, WhatsApp por coach y la supervisión del Head Coach. Conserva los clientes, rutinas, bitácoras y calendarios actuales. Ejecútalo al final.
+
+## Cuentas de demostración
+
+Después de ejecutar `supabase/multi-coach-platform.sql`, agrega estas variables **sólo en `.env.local`**. No subas contraseñas a GitHub ni las conviertas en variables `NEXT_PUBLIC_`:
+
+```bash
+DEMO_COACH_EMAIL=coach.demo@peakleveltraining.mx
+DEMO_COACH_PASSWORD=elige-una-contrasena-segura
+DEMO_CLIENT_EMAIL=cliente.demo@peakleveltraining.mx
+DEMO_CLIENT_PASSWORD=elige-otra-contrasena-segura
+DEMO_COACH_NAME=Coach Demo Peak
+DEMO_CLIENT_NAME=Cliente Demo Peak
+DEMO_COACH_WHATSAPP=525548792525
+```
+
+Luego prepara o restablece las dos cuentas y sus datos muestra:
+
+```bash
+npm run seed:demo
+```
+
+El proceso es idempotente: si las cuentas ya existen, sólo actualiza sus credenciales cuando sus perfiles ya están marcados como demo; nunca convierte ni reasigna una cuenta real. La migración también impide que un visitante cambie el correo, teléfono o contraseña de las cuentas compartidas. La cuenta demo coach no puede crear, vincular, editar ni eliminar clientes reales.
+
+Para limpiar ejercicios, personalizaciones, plantillas, rutinas e historial creados durante las pruebas y devolver el espacio demo a su estado inicial después de una presentación:
+
+```bash
+npm run seed:demo:reset
+```
+
+## Alta de un coach real
+
+1. Crea el usuario desde **Supabase → Authentication → Users** y confirma su correo.
+2. Verifica que exista una fila con el mismo `id` en `public.profiles`.
+3. En esa fila configura `role = 'coach'`, `full_name`, `coach_slug` y `whatsapp_phone` con código de país y sólo números.
+4. Deja `is_head_coach = false` e `is_demo = false`.
+
+Desde ese momento verá la biblioteca base de Sebastián. Todo ejercicio nuevo será privado y cualquier edición a un ejercicio base se guardará como una personalización que sólo verán ese coach y sus clientes.
+
+La migración sólo concede el rol de Head Coach al perfil `coach` cuyo correo sea exactamente `sebgnzlzram@gmail.com`. Si ese perfil no existe, se detiene sin asignar acceso global a otra persona.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

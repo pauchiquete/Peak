@@ -1,13 +1,14 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import ThemeToggle from "@/components/theme-toggle";
 
 const links = [
   { label: "Inicio", href: "/" },
-  { label: "Planes", href: "/planes" },
-  { label: "Sobre mí", href: "/sobre-mi" },
+  { label: "Head Coach", href: "/head-coach" },
+  { label: "Coaches", href: "/coaches" },
   { label: "FAQ", href: "/#faq" },
   { label: "Contacto", href: "/contacto" },
 ];
@@ -31,12 +32,27 @@ export default function Navbar() {
       "
     >
       <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8 lg:px-10">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="h-3 w-3 rounded-full bg-[var(--text)]" />
-
-          <span className="text-sm font-black uppercase tracking-[0.24em]">
-            Peak
-          </span>
+        <Link
+          href="/"
+          aria-label="Peak Level Training · Inicio"
+          className="flex shrink-0 items-center rounded-2xl bg-[#f7f3ee] px-2.5 py-1.5 ring-1 ring-black/10"
+        >
+          <Image
+            src="/Peak-Level-Training-logos/02-logo-corto.png"
+            alt=""
+            width={1013}
+            height={876}
+            priority
+            className="brand-logo h-9 w-auto lg:hidden"
+          />
+          <Image
+            src="/Peak-Level-Training-logos/04-logo-horizontal-v1.png"
+            alt=""
+            width={3029}
+            height={740}
+            priority
+            className="brand-logo hidden h-9 w-auto lg:block"
+          />
         </Link>
 
         <div className="hidden items-center gap-8 lg:flex">

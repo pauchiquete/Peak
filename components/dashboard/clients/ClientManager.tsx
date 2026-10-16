@@ -18,6 +18,7 @@ type Client = {
 
 type ClientManagerProps = {
   initialClients: Client[];
+  demoMode?: boolean;
 };
 
 const objectives = [
@@ -31,7 +32,10 @@ const objectives = [
   "Otro",
 ];
 
-export default function ClientManager({ initialClients }: ClientManagerProps) {
+export default function ClientManager({
+  initialClients,
+  demoMode = false,
+}: ClientManagerProps) {
   const supabase = createClient();
 
   const [clients, setClients] = useState<Client[]>(initialClients);
@@ -57,6 +61,11 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
 
   async function handleCreateClient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (demoMode) {
+      setMessage("La cuenta demo no puede crear clientes reales.");
+      return;
+    }
 
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
@@ -107,6 +116,11 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
   ) {
     event.preventDefault();
 
+    if (demoMode) {
+      setMessage("Los datos del cliente muestra están protegidos.");
+      return;
+    }
+
     const form = new FormData(event.currentTarget);
 
     const fullName = String(form.get("full_name") ?? "").trim();
@@ -149,6 +163,11 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
   }
 
   async function handleDeleteClient(clientId: string, clientName: string) {
+    if (demoMode) {
+      setMessage("La cuenta demo no puede eliminar clientes.");
+      return;
+    }
+
     const confirmed = window.confirm(
       `¿Seguro que quieres eliminar a ${clientName}? También se eliminarán sus rutinas.`
     );
@@ -176,6 +195,11 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
     clientId: string
   ) {
     event.preventDefault();
+
+    if (demoMode) {
+      setMessage("La cuenta demo no puede vincular cuentas reales.");
+      return;
+    }
 
     const form = new FormData(event.currentTarget);
     const email = String(form.get("login_email") ?? "").trim();
@@ -210,6 +234,14 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
 
   return (
     <div>
+      {demoMode && (
+        <div className="mb-5 rounded-[26px] border border-sky-500/30 bg-sky-500/10 px-5 py-4 text-sm font-bold leading-6 text-sky-700 dark:text-sky-300">
+          Estás en el entorno de demostración. Puedes explorar clientes,
+          rutinas, plantillas y ejercicios, pero los datos de acceso y la ficha
+          del cliente muestra están protegidos.
+        </div>
+      )}
+
       <div className="rounded-[32px] border border-[var(--border)] bg-[var(--surface)] p-5 backdrop-blur-xl sm:p-6">
         <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
@@ -225,13 +257,15 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
             />
           </div>
 
-          <button
-            type="button"
-            onClick={() => setFormOpen((value) => !value)}
-            className="rounded-2xl bg-[var(--button-bg)] px-7 py-4 text-sm font-black uppercase tracking-[0.18em] text-[var(--button-text)] transition hover:scale-[1.02] active:scale-95"
-          >
-            {formOpen ? "Cerrar" : "+ Nuevo cliente"}
-          </button>
+          {!demoMode && (
+            <button
+              type="button"
+              onClick={() => setFormOpen((value) => !value)}
+              className="rounded-2xl bg-[var(--button-bg)] px-7 py-4 text-sm font-black uppercase tracking-[0.18em] text-[var(--button-text)] transition hover:scale-[1.02] active:scale-95"
+            >
+              {formOpen ? "Cerrar" : "+ Nuevo cliente"}
+            </button>
+          )}
         </div>
 
         <div className="mt-5 flex items-center justify-between gap-4">
@@ -257,7 +291,7 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
         </p>
       )}
 
-      {formOpen && (
+      {formOpen && !demoMode && (
         <form
           onSubmit={handleCreateClient}
           className="mt-5 rounded-[32px] border border-[var(--border)] bg-[var(--surface)] p-5 backdrop-blur-xl sm:p-6"
@@ -377,41 +411,47 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
                   Ver calendario
                 </Link>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLinkingClientId((current) =>
-                      current === client.id ? null : client.id
-                    )
-                  }
-                  className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
-                >
-                  Vincular login
-                </button>
+                {!demoMode && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLinkingClientId((current) =>
+                          current === client.id ? null : client.id
+                        )
+                      }
+                      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
+                    >
+                      Vincular login
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setEditingClientId((current) =>
-                      current === client.id ? null : client.id
-                    )
-                  }
-                  className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
-                >
-                  Editar
-                </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingClientId((current) =>
+                          current === client.id ? null : client.id
+                        )
+                      }
+                      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
+                    >
+                      Editar
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleDeleteClient(client.id, client.full_name)}
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-red-500 transition hover:bg-red-500/20"
-                >
-                  Eliminar
-                </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteClient(client.id, client.full_name)
+                      }
+                      className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-red-500 transition hover:bg-red-500/20"
+                    >
+                      Eliminar
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
-            {linkingClientId === client.id && (
+            {!demoMode && linkingClientId === client.id && (
               <form
                 onSubmit={(event) => handleLinkClient(event, client.id)}
                 className="mt-6 rounded-[24px] border border-[var(--border)] bg-[var(--bg)] p-5"
@@ -454,7 +494,7 @@ export default function ClientManager({ initialClients }: ClientManagerProps) {
               </form>
             )}
 
-            {editingClientId === client.id && (
+            {!demoMode && editingClientId === client.id && (
               <form
                 onSubmit={(event) => handleUpdateClient(event, client.id)}
                 className="mt-6 rounded-[24px] border border-[var(--border)] bg-[var(--bg)] p-5"

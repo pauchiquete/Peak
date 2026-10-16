@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ClientManager from "@/components/dashboard/clients/ClientManager";
+import { loadCoachAccess } from "@/lib/coach-access";
 
 export default async function CoachClientsPage() {
   const supabase = await createClient();
@@ -14,11 +15,7 @@ export default async function CoachClientsPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const { profile } = await loadCoachAccess(supabase, user.id, user.email);
 
   if (profile?.role !== "coach") {
     redirect("/dashboard/client");
@@ -27,6 +24,7 @@ export default async function CoachClientsPage() {
   const { data: clients, error } = await supabase
     .from("clients")
     .select("*")
+    .eq("coach_id", user.id)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -34,7 +32,7 @@ export default async function CoachClientsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
       <section className="mx-auto max-w-7xl">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -77,7 +75,11 @@ export default async function CoachClientsPage() {
         </div>
 
         <div className="mt-10">
-            <ClientManager initialClients={clients ?? []} />        </div>
+          <ClientManager
+            initialClients={clients ?? []}
+            demoMode={profile.is_demo}
+          />
+        </div>
       </section>
     </main>
   );

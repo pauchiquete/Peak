@@ -13,6 +13,8 @@ import {
   type WorkoutCalendarEntry,
   type WorkoutCompletionEntry,
 } from "@/lib/workout-calendar";
+import { loadEffectiveExercises } from "@/lib/coach-exercises";
+import { loadCoachAccess } from "@/lib/coach-access";
 
 type Exercise = {
   id: string;
@@ -57,11 +59,7 @@ export default async function ClientDashboardPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { profile } = await loadCoachAccess(supabase, user.id, user.email);
 
   if (profile?.role === "coach") {
     redirect("/dashboard/coach");
@@ -69,13 +67,13 @@ export default async function ClientDashboardPage() {
 
   const { data: client, error: clientError } = await supabase
     .from("clients")
-    .select("id, full_name, objective, notes")
+    .select("id, coach_id, full_name, objective, notes")
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (clientError) {
     return (
-      <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
+      <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
         <section className="mx-auto max-w-7xl">
           <div className="rounded-[34px] border border-red-500/30 bg-red-500/10 p-8">
             <p className="text-xs font-black uppercase tracking-[0.3em] text-red-500">
@@ -97,7 +95,7 @@ export default async function ClientDashboardPage() {
 
   if (!client) {
     return (
-      <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
+      <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
         <section className="mx-auto max-w-7xl">
           <div className="mb-6 flex justify-end">
             <LogoutButton />
@@ -133,7 +131,7 @@ export default async function ClientDashboardPage() {
 
   if (daysError) {
     return (
-      <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
+      <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
         <section className="mx-auto max-w-7xl">
           <div className="rounded-[34px] border border-red-500/30 bg-red-500/10 p-8">
             <p className="text-xs font-black uppercase tracking-[0.3em] text-red-500">
@@ -294,7 +292,7 @@ export default async function ClientDashboardPage() {
 
   if (exercisesError) {
     return (
-      <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
+      <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
         <section className="mx-auto max-w-7xl">
           <div className="rounded-[34px] border border-red-500/30 bg-red-500/10 p-8">
             <p className="text-xs font-black uppercase tracking-[0.3em] text-red-500">
@@ -326,8 +324,18 @@ export default async function ClientDashboardPage() {
     };
   });
 
+  const exerciseLibrary = await loadEffectiveExercises(
+    supabase,
+    client.coach_id
+  );
+  const effectiveWorkoutExercises = normalizedWorkoutExercises.map((item) => ({
+    ...item,
+    exercise:
+      exerciseLibrary.byId.get(item.exercise_id) ?? item.exercise,
+  }));
+
   const assignedExerciseIds = [
-    ...new Set(normalizedWorkoutExercises.map((item) => item.exercise_id)),
+    ...new Set(effectiveWorkoutExercises.map((item) => item.exercise_id)),
   ];
   let progressData: ExerciseProgressEntryFromDb[] = [];
   let progressError: { code?: string; message: string } | null = null;
@@ -384,22 +392,24 @@ export default async function ClientDashboardPage() {
       ...day,
       schedule_started_on:
         scheduleStartByDayId.get(day.id) ?? todayInMexico,
-      exercises: normalizedWorkoutExercises.filter(
+      exercises: effectiveWorkoutExercises.filter(
         (item) => item.workout_day_id === day.id
       ),
     };
   });
 
   return (
-    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
       <section className="mx-auto max-w-7xl">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <Link
-            href="/dashboard/client/configuracion"
-            className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-center text-xs font-black uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
-          >
-            Cambiar contraseña
-          </Link>
+          {!profile?.is_demo && (
+            <Link
+              href="/dashboard/client/configuracion"
+              className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-center text-xs font-black uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
+            >
+              Cambiar contraseña
+            </Link>
+          )}
 
           <LogoutButton />
         </div>

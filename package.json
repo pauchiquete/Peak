@@ -1,12 +1,14 @@
 {
   "name": "peak-gym",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:demo": "node scripts/create-demo-accounts.mjs",
+    "seed:demo:reset": "node scripts/create-demo-accounts.mjs --reset"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

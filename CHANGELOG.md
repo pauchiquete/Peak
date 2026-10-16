@@ -1,5 +1,27 @@
 # Historial de cambios
 
+## 0.3.0 — 2026-10-16
+
+### Mejoras
+- Sergio Gonzales cuenta con un perfil ampliado que incorpora su trayectoria como nadador, su participación en Los 100, enfoque y formación.
+- Cada entrenador dispone de un dashboard privado con sus propios clientes, plantillas y ejercicios.
+- La biblioteca original de Sebastián se comparte como base sin duplicarse; cada coach puede crear ejercicios privados o personalizar la base sin cambiarla para los demás.
+- Nueva supervisión privada para el Head Coach con entrenadores, clientes, accesos, rutinas, adherencia y actividad de bitácora.
+- Los clientes dejan de ver la navegación pública dentro de su cuenta y el botón de WhatsApp abre conversación con su coach asignado.
+- Se incluye un proceso seguro e idempotente para preparar una cuenta demo de coach y su cliente muestra.
+- Las credenciales demo quedan protegidas desde Supabase, el restablecimiento limpia todo su espacio de prueba y el seed nunca reutiliza una cuenta real.
+- La portada utiliza una imagen general de entrenamiento adaptada para conservar su encuadre y la legibilidad del texto en computadora y teléfono.
+- Los logotipos oficiales de Peak Level Training identifican la navegación, el pie de página y la pestaña del navegador sin saturar el diseño.
+- La portada presenta a Peak como una marca y un equipo de entrenadores enfocado en salud, fuerza y rendimiento.
+- Nueva sección Head Coach con la experiencia, contacto, planes y galería de Sebastián González.
+- Nuevo catálogo de coaches con perfiles de Sebastián González, Sergio Gonzales y Fátima Bastida.
+- El catálogo permite filtrar entrenadores por especialidad.
+- Contacto y WhatsApp dirigen cada mensaje al entrenador seleccionado.
+- Las rutas anteriores de Planes y Sobre mí redirigen a las nuevas secciones para conservar enlaces existentes.
+
+### Base de datos
+- supabase/multi-coach-platform.sql
+
 ## 0.2.2 — 2026-09-28
 
 ### Correcciones

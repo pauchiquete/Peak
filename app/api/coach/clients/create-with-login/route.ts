@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { loadCoachAccess } from "@/lib/coach-access";
 
 export async function POST(request: Request) {
   try {
@@ -41,15 +42,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: coachProfile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    const { profile: coachProfile } = await loadCoachAccess(
+      supabase,
+      user.id,
+      user.email
+    );
 
     if (coachProfile?.role !== "coach") {
       return NextResponse.json(
         { error: "Solo el coach puede crear clientes." },
+        { status: 403 }
+      );
+    }
+
+    if (coachProfile.is_demo) {
+      return NextResponse.json(
+        { error: "La cuenta demo no puede crear usuarios reales." },
         { status: 403 }
       );
     }
@@ -63,6 +71,7 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     let clientUserId = existingProfile?.id ?? null;
+    let createdAuthUserId: string | null = null;
 
     if (existingProfile && existingProfile.role !== "client") {
       return NextResponse.json(
@@ -95,25 +104,43 @@ export async function POST(request: Request) {
       }
 
       clientUserId = createdUser.user.id;
+      createdAuthUserId = createdUser.user.id;
 
-      await admin.from("profiles").upsert({
+      const { error: profileError } = await admin.from("profiles").upsert({
         id: clientUserId,
         full_name: fullName,
         email,
         role: "client",
       });
+
+      if (profileError) {
+        await admin.auth.admin.deleteUser(createdUser.user.id);
+        return NextResponse.json(
+          { error: profileError.message },
+          { status: 400 }
+        );
+      }
     }
 
-    const { data: repeatedClient } = await admin
+    const { data: existingAssignment } = await admin
       .from("clients")
-      .select("id")
-      .eq("coach_id", user.id)
+      .select("id, coach_id")
       .eq("user_id", clientUserId)
+      .limit(1)
       .maybeSingle();
 
-    if (repeatedClient) {
+    if (existingAssignment) {
+      if (createdAuthUserId) {
+        await admin.auth.admin.deleteUser(createdAuthUserId);
+      }
+
       return NextResponse.json(
-        { error: "Este cliente ya está creado y vinculado." },
+        {
+          error:
+            existingAssignment.coach_id === user.id
+              ? "Este cliente ya está creado y vinculado."
+              : "Ese acceso ya pertenece a otro entrenador.",
+        },
         { status: 400 }
       );
     }
@@ -133,6 +160,10 @@ export async function POST(request: Request) {
       .single();
 
     if (clientError) {
+      if (createdAuthUserId) {
+        await admin.auth.admin.deleteUser(createdAuthUserId);
+      }
+
       return NextResponse.json(
         { error: clientError.message },
         { status: 400 }

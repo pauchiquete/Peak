@@ -4,13 +4,24 @@ import Image from "next/image";
 
 export default function HeroImage() {
   return (
-    <div className="absolute inset-0">
+    <div className="absolute inset-0 bg-[var(--bg)]">
       <Image
-        src="/coach.jpeg"
-        alt="Sebastián González - Entrenador personal"
+        src="/Imagen de ChatGPT 11 oct 2026, 12_46_01.png"
+        alt="Equipo para entrenamiento de fuerza, carrera, natación y Pilates en Peak"
         fill
         priority
-        className="object-cover object-top"
+        sizes="100vw"
+        className="object-cover object-[72%_center] sm:object-[68%_center] lg:object-center"
+      />
+
+      <div
+        className="absolute inset-0 lg:hidden"
+        style={{ background: "var(--hero-mobile-overlay)" }}
+      />
+
+      <div
+        className="absolute inset-0 hidden lg:block"
+        style={{ background: "var(--hero-side-overlay)" }}
       />
 
       <div

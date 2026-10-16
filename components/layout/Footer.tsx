@@ -1,15 +1,19 @@
+import Image from "next/image";
 import Link from "next/link";
 
 const links = [
   { label: "Inicio", href: "/" },
-  { label: "Planes", href: "/planes" },
-  { label: "Sobre mí", href: "/sobre-mi" },
+  { label: "Head Coach", href: "/head-coach" },
+  { label: "Coaches", href: "/coaches" },
   { label: "Contacto", href: "/contacto" },
 ];
 
 export default function Footer() {
   return (
-    <footer className="bg-[var(--bg)] px-5 pb-10 pt-16 text-[var(--text)] sm:px-8 lg:px-10">
+    <footer
+      id="site-footer"
+      className="bg-[var(--bg)] px-5 pb-10 pt-16 text-[var(--text)] sm:px-8 lg:px-10"
+    >
       <div
         className="
           mx-auto
@@ -25,17 +29,23 @@ export default function Footer() {
       >
         <div className="grid gap-10 lg:grid-cols-[1fr_auto] lg:items-start">
           <div>
-            <div className="flex items-center gap-3">
-              <div className="h-3 w-3 rounded-full bg-[var(--text)]" />
+            <Link
+              href="/"
+              aria-label="Peak Level Training · Inicio"
+              className="inline-flex rounded-[24px] bg-[#f7f3ee] p-3 ring-1 ring-black/10"
+            >
+              <Image
+                src="/Peak-Level-Training-logos/01-logo-principal.png"
+                alt=""
+                width={1970}
+                height={1910}
+                className="brand-logo h-24 w-auto opacity-90 sm:h-28"
+              />
+            </Link>
 
-              <p className="text-sm font-black uppercase tracking-[0.24em]">
-                Peak
-              </p>
-            </div>
-
-            <p className="mt-5 max-w-md text-sm leading-7 text-[var(--muted)]">
-              Entrenamiento personalizado con Sebastián González. Presencial en
-              Ciudad de México y online desde cualquier lugar.
+            <p className="mt-4 max-w-md text-sm leading-7 text-[var(--muted)]">
+              Un equipo de entrenadores dedicado a mejorar tu salud física con
+              planes personalizados, seguimiento real y dirección profesional.
             </p>
           </div>
 
@@ -64,26 +74,16 @@ export default function Footer() {
               </p>
 
               <div className="mt-4 flex flex-col gap-3 text-sm font-bold text-[var(--muted)]">
+                <Link href="/coaches" className="hover:text-[var(--text)]">
+                  Elegir entrenador
+                </Link>
+
+                <Link href="/contacto" className="hover:text-[var(--text)]">
+                  Agendar valoración
+                </Link>
+
                 <a href="mailto:sebgnzlzram@gmail.com" className="hover:text-[var(--text)]">
-                  sebgnzlzram@gmail.com
-                </a>
-
-                <a
-                  href="https://instagram.com/sebglezcoach"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-[var(--text)]"
-                >
-                  @sebglezcoach
-                </a>
-
-                <a
-                  href="https://wa.me/525548792525"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-[var(--text)]"
-                >
-                  WhatsApp
+                  Contacto Head Coach
                 </a>
               </div>
             </div>
@@ -96,7 +96,7 @@ export default function Footer() {
               <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
                 Online y presencial.
                 <br />
-                Atención 24/7.
+                Coaches en crecimiento.
               </p>
             </div>
           </div>
@@ -104,7 +104,7 @@ export default function Footer() {
 
         <div className="mt-10 border-t border-[var(--border)] pt-6">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--muted)]">
-            © 2026 Peak. Todos los derechos reservados.
+            © 2026 Peak Level Training. Todos los derechos reservados.
           </p>
         </div>
       </div>

@@ -4,28 +4,28 @@ import { motion } from "framer-motion";
 
 const stats = [
   {
-    value: "+280",
-    label: "Clientes entrenados",
+    value: "1:1",
+    label: "Acompañamiento",
     description:
-      "Más de 80 clientes presenciales y más de 200 online a lo largo de su carrera.",
+      "Una relación directa con tu coach para resolver dudas, revisar avances y ajustar el camino.",
   },
   {
-    value: "7 años",
-    label: "Experiencia",
+    value: "100%",
+    label: "Personalizado",
     description:
-      "Acompañando procesos físicos desde pérdida de grasa hasta alto rendimiento.",
+      "Tu plan parte de tu nivel, tus horarios, tu cuerpo y el objetivo que realmente quieres lograr.",
   },
   {
-    value: "4+",
-    label: "Certificaciones",
+    value: "Varias",
+    label: "Modalidades",
     description:
-      "IFBB PRO League, ISSA, Calisthenics Kings y entrenamiento avalado por la SEP.",
+      "Tenemos diferentes modalidades de entrenamiento. Conoce las opciones disponibles con cada coach.",
   },
   {
     value: "24/7",
     label: "Seguimiento",
     description:
-      "Acompañamiento constante para ajustar el plan y mantener el progreso.",
+      "Comunicación constante para mantener claridad, motivación y progreso durante el proceso.",
   },
 ];
 
@@ -44,19 +44,19 @@ export default function Stats() {
           className="max-w-3xl"
         >
           <p className="text-xs font-bold uppercase tracking-[0.32em] text-[#f5f0eb]/40">
-            Por qué entrenar con Sebastián
+            El método Peak
           </p>
 
           <h2 className="mt-6 max-w-3xl text-4xl font-black leading-[0.95] tracking-tight text-[#f5f0eb] sm:text-5xl lg:text-7xl">
-            Experiencia real.
+            Tu salud primero.
             <br />
-            Resultados medibles.
+            Tu plan personalizado.
           </h2>
 
           <p className="mt-8 max-w-2xl text-base leading-8 text-[#f5f0eb]/55 sm:text-lg">
-            No se trata de copiar rutinas ni seguir tendencias. Cada programa se
-            construye según tu punto de partida, tus objetivos, tu movilidad y
-            tu estilo de vida.
+            No se trata de copiar rutinas ni seguir tendencias. Peak conecta tu
+            objetivo con un entrenador que entiende tu contexto y construye un
+            plan que sí cabe en tu vida.
           </p>
         </motion.div>
 
@@ -130,15 +130,14 @@ export default function Stats() {
             </p>
 
             <h3 className="mt-5 text-3xl font-black leading-tight text-[#f5f0eb] sm:text-4xl">
-              Entrenar fuerte no sirve si no entrenas con dirección.
+              Entrenar más no siempre es avanzar. Entrenar con guía, sí.
             </h3>
           </div>
 
           <p className="mt-6 text-base leading-8 text-[#f5f0eb]/55 lg:mt-0">
-            El objetivo es que cada entrenamiento tenga intención: técnica,
-            progresión, control y seguimiento. Desde perder grasa hasta preparar
-            un reto físico, el plan se adapta a lo que tu cuerpo necesita para
-            avanzar sin lesionarte.
+            Cada entrenamiento tiene una razón: mejorar técnica, construir
+            fuerza, recuperar movilidad o elevar tu rendimiento. Tu coach mide,
+            escucha y ajusta para que el proceso sea exigente, seguro y sostenible.
           </p>
         </motion.div>
       </div>

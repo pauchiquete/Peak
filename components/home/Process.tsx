@@ -11,7 +11,7 @@ const steps = [
   {
     number: "02",
     title: "Plan",
-    text: "Sebastián diseña tu entrenamiento según lo que tu cuerpo necesita para avanzar.",
+    text: "Tu coach diseña el entrenamiento según lo que tu cuerpo necesita para avanzar.",
   },
   {
     number: "03",

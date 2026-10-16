@@ -77,6 +77,7 @@ type RoutineManagerProps = {
   workoutTrackingStartedOn: string;
   workoutCalendarReady: boolean;
   todayInMexico: string;
+  readOnly?: boolean;
 };
 
 function getYouTubeEmbedUrl(url: string) {
@@ -119,6 +120,7 @@ export default function RoutineManager({
   workoutTrackingStartedOn,
   workoutCalendarReady,
   todayInMexico,
+  readOnly = false,
 }: RoutineManagerProps) {
   const supabase = createClient();
 
@@ -208,6 +210,7 @@ export default function RoutineManager({
 
   async function handleCreateDay(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (readOnly) return;
 
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
@@ -268,6 +271,7 @@ export default function RoutineManager({
     dayId: string
   ) {
     event.preventDefault();
+    if (readOnly) return;
 
     const form = new FormData(event.currentTarget);
 
@@ -313,6 +317,8 @@ export default function RoutineManager({
   }
 
   async function handleDeleteDay(dayId: string, title: string) {
+    if (readOnly) return;
+
     const confirmed = window.confirm(
       `¿Seguro que quieres eliminar "${title}"? También se eliminarán sus ejercicios.`
     );
@@ -352,6 +358,7 @@ export default function RoutineManager({
     workoutDayId: string
   ) {
     event.preventDefault();
+    if (readOnly) return;
 
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
@@ -438,6 +445,7 @@ export default function RoutineManager({
     workoutDayId: string
   ) {
     event.preventDefault();
+    if (readOnly) return;
 
     const form = new FormData(event.currentTarget);
 
@@ -513,6 +521,8 @@ export default function RoutineManager({
   }
 
   function toggleSeriesSelection(dayId: string) {
+    if (readOnly) return;
+
     setSeriesSelectionDayId((current) =>
       current === dayId ? null : dayId
     );
@@ -523,6 +533,8 @@ export default function RoutineManager({
   }
 
   function toggleSeriesExercise(exerciseId: string) {
+    if (readOnly) return;
+
     setSelectedSeriesExerciseIds((current) =>
       current.includes(exerciseId)
         ? current.filter((id) => id !== exerciseId)
@@ -531,6 +543,8 @@ export default function RoutineManager({
   }
 
   async function handleCreateSeriesGroup(workoutDayId: string) {
+    if (readOnly) return;
+
     const currentDay = days.find((day) => day.id === workoutDayId);
 
     if (!currentDay) return;
@@ -629,6 +643,8 @@ export default function RoutineManager({
     workoutDayId: string,
     seriesGroupId: string
   ) {
+    if (readOnly) return;
+
     setLoadingSeries(true);
     setMessage("");
 
@@ -667,6 +683,8 @@ export default function RoutineManager({
     workoutDayId: string,
     exerciseName: string
   ) {
+    if (readOnly) return;
+
     const confirmed = window.confirm(
       `¿Seguro que quieres eliminar "${exerciseName}" de esta rutina?`
     );
@@ -766,7 +784,7 @@ export default function RoutineManager({
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.3em] text-[var(--muted)]">
-              Cliente
+              {readOnly ? "Supervisión de cliente" : "Cliente"}
             </p>
 
             <h1 className="mt-4 text-4xl font-black leading-[0.95] tracking-tight sm:text-6xl">
@@ -786,19 +804,25 @@ export default function RoutineManager({
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link
-              href="/dashboard/coach/clientes"
+              href={
+                readOnly
+                  ? "/dashboard/coach/equipo"
+                  : "/dashboard/coach/clientes"
+              }
               className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-center text-xs font-black uppercase tracking-[0.18em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
             >
               Volver
             </Link>
 
-            <button
-              type="button"
-              onClick={() => setDayFormOpen((value) => !value)}
-              className="rounded-2xl bg-[var(--button-bg)] px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-[var(--button-text)] transition hover:scale-[1.02] active:scale-95"
-            >
-              {dayFormOpen ? "Cerrar" : "+ Crear día"}
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => setDayFormOpen((value) => !value)}
+                className="rounded-2xl bg-[var(--button-bg)] px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-[var(--button-text)] transition hover:scale-[1.02] active:scale-95"
+              >
+                {dayFormOpen ? "Cerrar" : "+ Crear día"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -826,7 +850,7 @@ export default function RoutineManager({
         />
       </div>
 
-      {dayFormOpen && (
+      {!readOnly && dayFormOpen && (
         <form
           onSubmit={handleCreateDay}
           className="mt-5 rounded-[32px] border border-[var(--border)] bg-[var(--surface)] p-5 backdrop-blur-xl sm:p-6"
@@ -872,7 +896,9 @@ export default function RoutineManager({
 
       {days.length > 0 && (
         <p className="mt-7 text-sm font-bold text-[var(--muted)]">
-          Selecciona un día para revisar o editar la rutina completa.
+          {readOnly
+            ? "Selecciona un día para revisar la rutina completa."
+            : "Selecciona un día para revisar o editar la rutina completa."}
         </p>
       )}
 
@@ -924,7 +950,8 @@ export default function RoutineManager({
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+                  {!readOnly && (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
                     <button
                       type="button"
                       onClick={() => {
@@ -975,10 +1002,11 @@ export default function RoutineManager({
                     >
                       Eliminar día
                     </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-            {editingDayId === day.id && (
+            {!readOnly && editingDayId === day.id && (
               <form
                 onSubmit={(event) => handleUpdateDay(event, day.id)}
                 className="mt-6 rounded-[28px] border border-[var(--border)] bg-[var(--bg)] p-5"
@@ -1033,7 +1061,7 @@ export default function RoutineManager({
               </form>
             )}
 
-            {openExerciseFormDayId === day.id && (
+            {!readOnly && openExerciseFormDayId === day.id && (
               <form
                 onSubmit={(event) => handleAddExercise(event, day.id)}
                 className="mt-6 rounded-[28px] border border-[var(--border)] bg-[var(--bg)] p-5"
@@ -1086,7 +1114,7 @@ export default function RoutineManager({
               </form>
             )}
 
-            {selectingSeries && (
+            {!readOnly && selectingSeries && (
               <div
                 id={seriesHelpId}
                 className="mt-6 rounded-[28px] border-2 border-[var(--text)] bg-[var(--surface-strong)] p-5"
@@ -1169,7 +1197,7 @@ export default function RoutineManager({
                         selected ? "ring-2 ring-[var(--text)]" : ""
                       }`}
                     >
-                  {selectingSeries && !item.series_group_id && (
+                  {!readOnly && selectingSeries && !item.series_group_id && (
                     <label className="mb-5 flex cursor-pointer items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-black text-[var(--text)]">
                       <input
                         type="checkbox"
@@ -1278,35 +1306,39 @@ export default function RoutineManager({
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditingExerciseId((current) =>
-                            current === item.id ? null : item.id
-                          )
-                        }
-                        className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
-                      >
-                        Editar
-                      </button>
+                      {!readOnly && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingExerciseId((current) =>
+                                current === item.id ? null : item.id
+                              )
+                            }
+                            className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--text)] transition hover:bg-[var(--surface-strong)]"
+                          >
+                            Editar
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleDeleteExercise(
-                            item.id,
-                            day.id,
-                            item.exercise?.name || "este ejercicio"
-                          )
-                        }
-                        className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-red-500 transition hover:bg-red-500/20"
-                      >
-                        Eliminar
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeleteExercise(
+                                item.id,
+                                day.id,
+                                item.exercise?.name || "este ejercicio"
+                              )
+                            }
+                            className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-red-500 transition hover:bg-red-500/20"
+                          >
+                            Eliminar
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {editingExerciseId === item.id && (
+                  {!readOnly && editingExerciseId === item.id && (
                     <form
                       onSubmit={(event) =>
                         handleUpdateExercise(event, item.id, day.id)
@@ -1389,8 +1421,14 @@ export default function RoutineManager({
                     <RoutineSeriesBlock
                       key={block.id}
                       exerciseCount={block.exercises.length}
-                      onUngroup={() =>
-                        handleUngroupSeries(day.id, block.seriesGroupId!)
+                      onUngroup={
+                        readOnly
+                          ? undefined
+                          : () =>
+                              handleUngroupSeries(
+                                day.id,
+                                block.seriesGroupId!
+                              )
                       }
                       ungrouping={loadingSeries}
                     >
@@ -1421,7 +1459,9 @@ export default function RoutineManager({
             <h2 className="text-3xl font-black">Aún no hay rutina.</h2>
 
             <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
-              Crea el primer día de entrenamiento para este cliente.
+              {readOnly
+                ? "Este cliente todavía no tiene días de entrenamiento asignados."
+                : "Crea el primer día de entrenamiento para este cliente."}
             </p>
           </div>
         )}

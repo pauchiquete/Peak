@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/layout/Footer";
-import WhatsAppButton from "@/components/whatsapp-button";
+import SiteShell from "@/components/layout/SiteShell";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Peak | Entrenamiento personalizado",
+  title: "Peak Level Training | Coaches de salud y rendimiento",
   description:
-    "Entrenamiento personalizado presencial y online con Sebastián González.",
+    "Entrenamiento personalizado con coaches enfocados en mejorar tu salud, fuerza y rendimiento.",
+  icons: {
+    icon: "/Peak-Level-Training-logos/02-logo-corto.png",
+    apple: "/Peak-Level-Training-logos/02-logo-corto.png",
+  },
 };
 
 export default function RootLayout({
@@ -21,10 +23,7 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning data-scroll-behavior="smooth">
       <body>
         <Providers>
-          <Navbar />
-          {children}
-          <Footer />
-          <WhatsAppButton />
+          <SiteShell>{children}</SiteShell>
         </Providers>
       </body>
     </html>

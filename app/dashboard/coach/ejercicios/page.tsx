@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ExerciseLibrary from "@/components/dashboard/exercises/ExerciseLibrary";
+import { loadCoachAccess } from "@/lib/coach-access";
+import { loadEffectiveExercises } from "@/lib/coach-exercises";
 
 export default async function CoachExercisesPage() {
   const supabase = await createClient();
@@ -14,23 +16,16 @@ export default async function CoachExercisesPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const { profile } = await loadCoachAccess(supabase, user.id, user.email);
 
   if (profile?.role !== "coach") {
     redirect("/dashboard/client");
   }
 
-  const { data: exercises } = await supabase
-    .from("exercises")
-    .select("id, name, muscle_group, body_region, video_url, created_at")
-    .order("name", { ascending: true });
+  const exerciseLibrary = await loadEffectiveExercises(supabase, user.id);
 
   return (
-    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-28 text-[var(--text)] sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
       <section className="mx-auto max-w-7xl">
         <div className="rounded-[34px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -44,8 +39,9 @@ export default async function CoachExercisesPage() {
               </h1>
 
               <p className="mt-5 max-w-2xl text-sm leading-7 text-[var(--muted)]">
-                Crea, edita y organiza ejercicios con video. Esta biblioteca se
-                usa para rutinas de clientes y plantillas.
+                Todos los coaches parten de la biblioteca Peak. Tus ejercicios
+                nuevos y las personalizaciones que hagas sólo se aplican a tu
+                cuenta y a tus clientes.
               </p>
             </div>
 
@@ -59,7 +55,12 @@ export default async function CoachExercisesPage() {
         </div>
 
         <div className="mt-5">
-          <ExerciseLibrary exercises={exercises ?? []} />
+          <ExerciseLibrary
+            exercises={exerciseLibrary.all}
+            coachId={user.id}
+            isHeadCoach={profile.is_head_coach}
+            setupRequired={exerciseLibrary.setupRequired}
+          />
         </div>
       </section>
     </main>

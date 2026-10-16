@@ -11,6 +11,15 @@
   --button-bg: #17130f;
   --button-text: #f7f3ee;
 
+  --hero-mobile-overlay: rgba(247, 243, 238, 0.64);
+  --hero-side-overlay: linear-gradient(
+    to right,
+    rgba(247, 243, 238, 0.94) 0%,
+    rgba(247, 243, 238, 0.76) 46%,
+    rgba(247, 243, 238, 0.2) 72%,
+    rgba(247, 243, 238, 0) 100%
+  );
+
   --hero-overlay: linear-gradient(
     to bottom,
     rgba(247, 243, 238, 0.02) 0%,
@@ -30,6 +39,15 @@
 
   --button-bg: #f5f0eb;
   --button-text: #0d0d0d;
+
+  --hero-mobile-overlay: rgba(13, 13, 13, 0.48);
+  --hero-side-overlay: linear-gradient(
+    to right,
+    rgba(13, 13, 13, 0.86) 0%,
+    rgba(13, 13, 13, 0.68) 46%,
+    rgba(13, 13, 13, 0.18) 72%,
+    rgba(13, 13, 13, 0) 100%
+  );
 
   --hero-overlay: linear-gradient(
     to bottom,

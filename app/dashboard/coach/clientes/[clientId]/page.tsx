@@ -12,6 +12,8 @@ import {
   type WorkoutCalendarEntry,
   type WorkoutCompletionEntry,
 } from "@/lib/workout-calendar";
+import { loadEffectiveExercises } from "@/lib/coach-exercises";
+import { loadCoachAccess } from "@/lib/coach-access";
 
 type Exercise = {
   id: string;
@@ -63,32 +65,36 @@ export default async function ClientRoutinePage({ params }: PageProps) {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const access = await loadCoachAccess(supabase, user.id, user.email);
 
-  if (profile?.role !== "coach") {
+  if (access.profile?.role !== "coach") {
     redirect("/dashboard/client");
   }
 
   const { data: client } = await supabase
     .from("clients")
-    .select("id, full_name, objective, notes")
+    .select("id, coach_id, full_name, objective, notes")
     .eq("id", clientId)
-    .eq("coach_id", user.id)
     .single();
 
   if (!client) {
     notFound();
   }
 
+  const isOwnClient = client.coach_id === user.id;
+  const supervisionReadOnly = !isOwnClient && access.profile.is_head_coach;
+
+  if (!isOwnClient && !supervisionReadOnly) {
+    notFound();
+  }
+
+  const clientCoachId = client.coach_id;
+
   const { data: workoutDays } = await supabase
     .from("workout_days")
     .select("*")
     .eq("client_id", clientId)
-    .eq("coach_id", user.id)
+    .eq("coach_id", clientCoachId)
     .order("created_at", { ascending: false });
 
   const dayIds = (workoutDays ?? []).map((day) => day.id);
@@ -99,7 +105,7 @@ export default async function ClientRoutinePage({ params }: PageProps) {
       .from("clients")
       .select("workout_tracking_started_on")
       .eq("id", client.id)
-      .eq("coach_id", user.id)
+      .eq("coach_id", clientCoachId)
       .maybeSingle();
   const workoutTrackingStartedOn =
     typeof workoutTracking?.workout_tracking_started_on === "string"
@@ -112,7 +118,7 @@ export default async function ClientRoutinePage({ params }: PageProps) {
           .from("workout_days")
           .select("id, schedule_started_on")
           .eq("client_id", client.id)
-          .eq("coach_id", user.id)
+          .eq("coach_id", clientCoachId)
           .in("id", dayIds)
       : { data: [], error: null };
   const scheduleStartByDayId = new Map(
@@ -162,7 +168,7 @@ export default async function ClientRoutinePage({ params }: PageProps) {
   }
 
   const { error: workoutHistorySyncError } =
-    !workoutTrackingError && !workoutScheduleError
+    !supervisionReadOnly && !workoutTrackingError && !workoutScheduleError
       ? await supabase.rpc("sync_workout_calendar_history", {
           target_client_id: client.id,
         })
@@ -226,16 +232,18 @@ export default async function ClientRoutinePage({ params }: PageProps) {
           .order("position", { ascending: true })
       : { data: [] };
 
-  const { data: exercises } = await supabase
-    .from("exercises")
-    .select("id, name, muscle_group, body_region, video_url")
-    .order("name", { ascending: true });
+  const exerciseLibrary = await loadEffectiveExercises(
+    supabase,
+    clientCoachId
+  );
 
-  const { data: templates } = await supabase
-    .from("routine_templates")
-    .select("id, name, focus, level, notes")
-    .eq("coach_id", user.id)
-    .order("created_at", { ascending: false });
+  const { data: templates } = supervisionReadOnly
+    ? { data: [] }
+    : await supabase
+        .from("routine_templates")
+        .select("id, name, focus, level, notes")
+        .eq("coach_id", user.id)
+        .order("created_at", { ascending: false });
 
   const templateIds = (templates ?? []).map((template) => template.id);
 
@@ -264,7 +272,9 @@ export default async function ClientRoutinePage({ params }: PageProps) {
     return {
       ...typedItem,
       series_group_id: typedItem.series_group_id ?? null,
-      exercise: normalizeExercise(typedItem.exercise),
+      exercise:
+        exerciseLibrary.byId.get(typedItem.exercise_id) ??
+        normalizeExercise(typedItem.exercise),
     };
   });
 
@@ -325,14 +335,30 @@ export default async function ClientRoutinePage({ params }: PageProps) {
   });
 
   return (
-    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-28 text-[var(--text)] sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-12 text-[var(--text)] sm:px-8 lg:px-10">
       <section className="mx-auto max-w-7xl">
-        <ApplyTemplateForm clientId={client.id} templates={templateSummaries} />
+        {exerciseLibrary.setupRequired && (
+          <div className="mb-5 rounded-[24px] border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm font-bold leading-6 text-amber-700 dark:text-amber-300">
+            La rutina está disponible, pero necesitas la migración
+            multi-entrenador para editarla con una biblioteca privada.
+          </div>
+        )}
+        {supervisionReadOnly && (
+          <div className="mb-5 rounded-[24px] border border-sky-500/30 bg-sky-500/10 px-5 py-4 text-sm font-bold leading-6 text-sky-700 dark:text-sky-300">
+            Supervisión Head Coach: puedes revisar la rutina, la bitácora y el
+            calendario de este cliente. Las acciones de edición están
+            desactivadas.
+          </div>
+        )}
+
+        {!supervisionReadOnly && (
+          <ApplyTemplateForm clientId={client.id} templates={templateSummaries} />
+        )}
 
         <RoutineManager
           client={client}
           initialDays={daysWithExercises}
-          exercises={exercises ?? []}
+          exercises={exerciseLibrary.catalog}
           initialProgressEntries={initialProgressEntries}
           progressStorageReady={!progressError}
           progressWeightUnitsReady={progressWeightUnitsReady}
@@ -341,6 +367,7 @@ export default async function ClientRoutinePage({ params }: PageProps) {
           workoutTrackingStartedOn={workoutTrackingStartedOn}
           workoutCalendarReady={workoutCalendarReady}
           todayInMexico={todayInMexico}
+          readOnly={supervisionReadOnly}
         />
       </section>
     </main>

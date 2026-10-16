@@ -4,9 +4,9 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 
 const proof = [
-  "+280 clientes",
-  "7 años entrenando",
-  "Ex atleta de alto rendimiento",
+  "Coaches certificados",
+  "Plan 100% personalizado",
+  "Progreso medible",
 ];
 
 export default function HeroContent() {
@@ -31,7 +31,7 @@ export default function HeroContent() {
         <span className="mr-3 h-2 w-2 rounded-full bg-[var(--text)]" />
 
         <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[var(--muted)] sm:text-xs">
-          Entrenamiento personalizado
+          Salud, fuerza y rendimiento
         </p>
       </motion.div>
 
@@ -67,12 +67,9 @@ export default function HeroContent() {
           sm:leading-8
         "
       >
-        Entrena con{" "}
-        <span className="font-bold text-[var(--text)]">
-          Sebastián González
-        </span>
-        : ex atleta de alto rendimiento, especialista en hipertrofia,
-        calistenia y rendimiento físico.
+        Peak reúne entrenadores comprometidos con mejorar tu salud física. Te
+        conectamos con el coach que mejor entiende tu objetivo y construimos un
+        proceso con dirección, seguimiento y resultados que puedas sostener.
       </motion.p>
 
       <motion.div
@@ -82,7 +79,7 @@ export default function HeroContent() {
         className="mt-8 flex flex-col gap-3 sm:flex-row"
       >
         <Link
-          href="/contacto"
+          href="/head-coach"
           className="
             rounded-2xl
             bg-[var(--button-bg)]
@@ -99,11 +96,11 @@ export default function HeroContent() {
             active:scale-95
           "
         >
-          Agendar valoración
+          Conoce al Head Coach
         </Link>
 
         <Link
-          href="/planes"
+          href="/coaches"
           className="
             rounded-2xl
             border
@@ -123,7 +120,7 @@ export default function HeroContent() {
             active:scale-95
           "
         >
-          Ver programas
+          Conoce a los Coaches
         </Link>
       </motion.div>
 

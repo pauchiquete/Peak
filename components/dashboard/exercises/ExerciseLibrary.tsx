@@ -2,18 +2,13 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-
-type Exercise = {
-  id: string;
-  name: string;
-  muscle_group: string;
-  body_region: string | null;
-  video_url: string | null;
-  created_at?: string;
-};
+import type { EffectiveExercise } from "@/lib/coach-exercises";
 
 type ExerciseLibraryProps = {
-  exercises: Exercise[];
+  exercises: EffectiveExercise[];
+  coachId: string;
+  isHeadCoach: boolean;
+  setupRequired: boolean;
 };
 
 const bodyRegions = [
@@ -51,10 +46,15 @@ function getYouTubeEmbedUrl(url: string) {
   }
 }
 
-export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
+export default function ExerciseLibrary({
+  exercises,
+  coachId,
+  isHeadCoach,
+  setupRequired,
+}: ExerciseLibraryProps) {
   const supabase = createClient();
 
-  const [items, setItems] = useState<Exercise[]>(exercises);
+  const [items, setItems] = useState<EffectiveExercise[]>(exercises);
   const [search, setSearch] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("Todos");
   const [formOpen, setFormOpen] = useState(false);
@@ -63,6 +63,7 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
   const [selectedExerciseName, setSelectedExerciseName] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showUnavailable, setShowUnavailable] = useState(false);
 
   const groups = useMemo(() => {
     const unique = Array.from(
@@ -76,6 +77,8 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
     const query = search.toLowerCase().trim();
 
     return items.filter((item) => {
+      const matchesAvailability =
+        showUnavailable || (!item.hidden && !item.archived_at);
       const matchesSearch =
         item.name.toLowerCase().includes(query) ||
         item.muscle_group.toLowerCase().includes(query) ||
@@ -84,12 +87,17 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
       const matchesGroup =
         selectedGroup === "Todos" || item.muscle_group === selectedGroup;
 
-      return matchesSearch && matchesGroup;
+      return matchesAvailability && matchesSearch && matchesGroup;
     });
-  }, [items, search, selectedGroup]);
+  }, [items, search, selectedGroup, showUnavailable]);
 
   async function handleCreateExercise(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (setupRequired) {
+      setMessage("Ejecuta primero la migración multi-entrenador en Supabase.");
+      return;
+    }
 
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
@@ -109,8 +117,12 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
         muscle_group: muscleGroup,
         body_region: bodyRegion || null,
         video_url: videoUrl || null,
+        owner_coach_id: coachId,
+        is_shared_base: isHeadCoach,
       })
-      .select("*")
+      .select(
+        "id, name, muscle_group, body_region, video_url, created_at, owner_coach_id, is_shared_base, archived_at"
+      )
       .single();
 
     if (error) {
@@ -119,8 +131,15 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
       return;
     }
 
+    const createdExercise: EffectiveExercise = {
+      ...data,
+      source: data.is_shared_base ? "base" : "custom",
+      has_override: false,
+      hidden: false,
+    };
+
     setItems((current) =>
-      [data as Exercise, ...current].sort((a, b) =>
+      [createdExercise, ...current].sort((a, b) =>
         a.name.localeCompare(b.name)
       )
     );
@@ -137,6 +156,11 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
   ) {
     event.preventDefault();
 
+    if (setupRequired) {
+      setMessage("Ejecuta primero la migración multi-entrenador en Supabase.");
+      return;
+    }
+
     const form = new FormData(event.currentTarget);
 
     const name = String(form.get("name") ?? "").trim();
@@ -147,17 +171,41 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
     setLoading(true);
     setMessage("");
 
-    const { data, error } = await supabase
-      .from("exercises")
-      .update({
-        name,
-        muscle_group: muscleGroup,
-        body_region: bodyRegion || null,
-        video_url: videoUrl || null,
-      })
-      .eq("id", exerciseId)
-      .select("*")
-      .single();
+    const currentExercise = items.find((item) => item.id === exerciseId);
+    const usesPrivateOverride =
+      currentExercise?.is_shared_base && !isHeadCoach;
+
+    const result = usesPrivateOverride
+      ? await supabase
+          .from("exercise_overrides")
+          .upsert(
+            {
+              coach_id: coachId,
+              exercise_id: exerciseId,
+              name,
+              muscle_group: muscleGroup,
+              body_region: bodyRegion || null,
+              video_url: videoUrl || null,
+              hidden: false,
+            },
+            { onConflict: "coach_id,exercise_id" }
+          )
+          .select("exercise_id")
+          .single()
+      : await supabase
+          .from("exercises")
+          .update({
+            name,
+            muscle_group: muscleGroup,
+            body_region: bodyRegion || null,
+            video_url: videoUrl || null,
+          })
+          .eq("id", exerciseId)
+          .eq("owner_coach_id", coachId)
+          .select("id")
+          .single();
+
+    const { error } = result;
 
     if (error) {
       setMessage(error.message);
@@ -167,18 +215,43 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
 
     setItems((current) =>
       current
-        .map((item) => (item.id === exerciseId ? (data as Exercise) : item))
+        .map((item) =>
+          item.id === exerciseId
+            ? {
+                ...item,
+                name,
+                muscle_group: muscleGroup,
+                body_region: bodyRegion || null,
+                video_url: videoUrl || null,
+                has_override: usesPrivateOverride || item.has_override,
+                hidden: false,
+              }
+            : item
+        )
         .sort((a, b) => a.name.localeCompare(b.name))
     );
 
     setEditingId(null);
-    setMessage("Ejercicio actualizado correctamente.");
+    setMessage(
+      usesPrivateOverride
+        ? "Personalización guardada sólo para tu cuenta y tus clientes."
+        : "Ejercicio actualizado correctamente."
+    );
     setLoading(false);
   }
 
   async function handleDeleteExercise(exerciseId: string, exerciseName: string) {
+    if (setupRequired) {
+      setMessage("Ejecuta primero la migración multi-entrenador en Supabase.");
+      return;
+    }
+
+    const exercise = items.find((item) => item.id === exerciseId);
+    const hidesSharedExercise = exercise?.is_shared_base && !isHeadCoach;
     const confirmed = window.confirm(
-      `¿Seguro que quieres eliminar "${exerciseName}"?`
+      hidesSharedExercise
+        ? `¿Seguro que quieres ocultar "${exerciseName}" de tu biblioteca? Las rutinas existentes conservarán su historial.`
+        : `¿Seguro que quieres archivar "${exerciseName}"? Las rutinas existentes conservarán su historial.`
     );
 
     if (!confirmed) return;
@@ -186,25 +259,95 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
     setLoading(true);
     setMessage("");
 
-    const { error } = await supabase
-      .from("exercises")
-      .delete()
-      .eq("id", exerciseId);
+    const result = hidesSharedExercise
+      ? await supabase.from("exercise_overrides").upsert(
+          {
+            coach_id: coachId,
+            exercise_id: exerciseId,
+            name: exercise?.name ?? exerciseName,
+            muscle_group: exercise?.muscle_group ?? "Sin grupo",
+            body_region: exercise?.body_region ?? null,
+            video_url: exercise?.video_url ?? null,
+            hidden: true,
+          },
+          { onConflict: "coach_id,exercise_id" }
+        )
+      : await supabase
+          .from("exercises")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("id", exerciseId)
+          .eq("owner_coach_id", coachId);
+    const { error } = result;
 
     if (error) {
       setMessage(
-        "No se pudo eliminar. Probablemente este ejercicio ya está usado en una rutina o plantilla."
+        "No se pudo archivar el ejercicio. Revisa la configuración de Supabase."
       );
       setLoading(false);
       return;
     }
 
-    setItems((current) => current.filter((item) => item.id !== exerciseId));
-    setMessage("Ejercicio eliminado correctamente.");
+    setItems((current) =>
+      current.map((item) =>
+        item.id === exerciseId
+          ? {
+              ...item,
+              hidden: hidesSharedExercise || item.hidden,
+              has_override: hidesSharedExercise || item.has_override,
+              archived_at: hidesSharedExercise
+                ? item.archived_at
+                : new Date().toISOString(),
+            }
+          : item
+      )
+    );
+    setMessage(
+      hidesSharedExercise
+        ? "Ejercicio ocultado sólo de tu biblioteca."
+        : "Ejercicio archivado correctamente."
+    );
     setLoading(false);
   }
 
-  function openVideo(exercise: Exercise) {
+  async function handleRestoreExercise(exercise: EffectiveExercise) {
+    if (setupRequired) return;
+
+    setLoading(true);
+    setMessage("");
+
+    const result = exercise.is_shared_base && !isHeadCoach
+      ? await supabase
+          .from("exercise_overrides")
+          .delete()
+          .eq("coach_id", coachId)
+          .eq("exercise_id", exercise.id)
+      : await supabase
+          .from("exercises")
+          .update({ archived_at: null })
+          .eq("id", exercise.id)
+          .eq("owner_coach_id", coachId);
+
+    if (result.error) {
+      setMessage(result.error.message);
+      setLoading(false);
+      return;
+    }
+
+    if (exercise.is_shared_base && !isHeadCoach) {
+      window.location.reload();
+      return;
+    }
+
+    setItems((current) =>
+      current.map((item) =>
+        item.id === exercise.id ? { ...item, archived_at: null } : item
+      )
+    );
+    setMessage("Ejercicio restaurado.");
+    setLoading(false);
+  }
+
+  function openVideo(exercise: EffectiveExercise) {
     if (!exercise.video_url) return;
 
     setSelectedExerciseName(exercise.name);
@@ -213,6 +356,14 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
 
   return (
     <div>
+      {setupRequired && (
+        <div className="mb-5 rounded-[26px] border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm font-bold leading-6 text-amber-700 dark:text-amber-300">
+          La biblioteca está en modo de lectura para proteger los ejercicios
+          actuales. Ejecuta <code>supabase/multi-coach-platform.sql</code> para
+          activar ejercicios privados y personalizaciones por coach.
+        </div>
+      )}
+
       <div className="rounded-[30px] border border-[var(--border)] bg-[var(--surface)] p-5 backdrop-blur-xl sm:p-6">
         <div className="grid gap-4 lg:grid-cols-[1fr_240px_auto] lg:items-end">
           <div>
@@ -247,6 +398,7 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
           <button
             type="button"
             onClick={() => setFormOpen((current) => !current)}
+            disabled={setupRequired}
             className="w-full rounded-2xl bg-[var(--button-bg)] px-6 py-4 text-xs font-black uppercase tracking-[0.16em] text-[var(--button-text)] transition active:scale-95 lg:w-auto"
           >
             {formOpen ? "Cerrar" : "+ Ejercicio"}
@@ -258,16 +410,26 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
             {filteredItems.length} ejercicios encontrados
           </p>
 
-          <button
-            type="button"
-            onClick={() => {
-              setSearch("");
-              setSelectedGroup("Todos");
-            }}
-            className="w-fit rounded-full border border-[var(--border)] bg-[var(--bg)] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--muted)]"
-          >
-            Limpiar
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setShowUnavailable((value) => !value)}
+              className="w-fit rounded-full border border-[var(--border)] bg-[var(--bg)] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[var(--muted)]"
+            >
+              {showUnavailable ? "Ocultar archivados" : "Incluir archivados"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setSelectedGroup("Todos");
+              }}
+              className="w-fit rounded-full border border-[var(--border)] bg-[var(--bg)] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--muted)]"
+            >
+              Limpiar
+            </button>
+          </div>
         </div>
       </div>
 
@@ -334,9 +496,23 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
             className="rounded-[28px] border border-[var(--border)] bg-[var(--surface)] p-5 backdrop-blur-xl transition hover:bg-[var(--surface-strong)]"
           >
             <div className="min-h-[120px]">
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[var(--muted)]">
-                {exercise.body_region || "Sin región"}
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+                  {exercise.body_region || "Sin región"}
+                </p>
+                <span className="rounded-full border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-[var(--muted)]">
+                  {exercise.source === "base"
+                    ? exercise.has_override
+                      ? "Personalizado"
+                      : "Biblioteca Peak"
+                    : "Ejercicio propio"}
+                </span>
+                {(exercise.hidden || exercise.archived_at) && (
+                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-amber-600">
+                    Archivado
+                  </span>
+                )}
+              </div>
 
               <h2 className="mt-3 text-2xl font-black leading-tight tracking-tight">
                 {exercise.name}
@@ -358,32 +534,62 @@ export default function ExerciseLibrary({ exercises }: ExerciseLibraryProps) {
                 </button>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              {exercise.hidden || exercise.archived_at ? (
                 <button
                   type="button"
-                  onClick={() =>
-                    setEditingId((current) =>
-                      current === exercise.id ? null : exercise.id
-                    )
-                  }
-                  className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[var(--text)]"
+                  disabled={loading || setupRequired}
+                  onClick={() => handleRestoreExercise(exercise)}
+                  className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-600 disabled:opacity-50"
                 >
-                  Editar
+                  Restaurar ejercicio
                 </button>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={setupRequired}
+                      onClick={() =>
+                        setEditingId((current) =>
+                          current === exercise.id ? null : exercise.id
+                        )
+                      }
+                      className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[var(--text)] disabled:opacity-50"
+                    >
+                      Editar
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleDeleteExercise(exercise.id, exercise.name)
-                  }
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-red-500"
-                >
-                  Eliminar
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      disabled={setupRequired}
+                      onClick={() =>
+                        handleDeleteExercise(exercise.id, exercise.name)
+                      }
+                      className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-red-500 disabled:opacity-50"
+                    >
+                      {exercise.is_shared_base && !isHeadCoach
+                        ? "Ocultar"
+                        : "Archivar"}
+                    </button>
+                  </div>
+
+                  {exercise.has_override && !isHeadCoach && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleRestoreExercise(exercise)}
+                      className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[var(--muted)] disabled:opacity-50"
+                    >
+                      Restablecer original
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
-            {editingId === exercise.id && (
+            {editingId === exercise.id &&
+              !exercise.hidden &&
+              !exercise.archived_at && (
               <form
                 onSubmit={(event) => handleUpdateExercise(event, exercise.id)}
                 className="mt-5 rounded-[22px] border border-[var(--border)] bg-[var(--bg)] p-4"

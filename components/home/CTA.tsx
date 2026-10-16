@@ -20,20 +20,20 @@ export default function CTA() {
         "
       >
         <p className="text-xs font-black uppercase tracking-[0.3em] opacity-50">
-          Primera valoración
+          Tu proceso empieza aquí
         </p>
 
         <h2 className="mx-auto mt-6 max-w-2xl text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl">
-          El mejor momento para empezar es hoy.
+          Encuentra al coach que va contigo.
         </h2>
 
         <p className="mx-auto mt-6 max-w-xl text-base leading-7 opacity-60 sm:text-lg">
-          Agenda una valoración y descubre qué tipo de entrenamiento necesitas
-          para avanzar con estructura.
+          Conoce al equipo, elige con quién quieres trabajar y da el primer paso
+          hacia una vida más fuerte y saludable.
         </p>
 
         <Link
-          href="/contacto"
+          href="/coaches"
           className="
             mt-9
             inline-flex
@@ -51,7 +51,7 @@ export default function CTA() {
             active:scale-95
           "
         >
-          Agendar valoración
+          Ver coaches
         </Link>
       </div>
     </section>
