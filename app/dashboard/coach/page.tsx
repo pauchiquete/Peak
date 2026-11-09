@@ -69,7 +69,7 @@ export default async function CoachDashboardPage() {
           </div>
         )}
 
-        <div className={`mt-10 grid gap-4 ${profile.is_head_coach ? "lg:grid-cols-2 xl:grid-cols-4" : "lg:grid-cols-3"}`}>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Link
             href="/dashboard/coach/clientes"
             className="rounded-[30px] border border-[var(--border)] bg-[var(--surface)] p-7 backdrop-blur-xl transition hover:bg-[var(--surface-strong)] active:scale-[0.99]"
@@ -137,6 +137,22 @@ export default async function CoachDashboardPage() {
               </p>
             </Link>
           )}
+
+          <Link
+            href="/dashboard/coach/configuracion"
+            className="rounded-[30px] border border-[var(--border)] bg-[var(--surface)] p-7 backdrop-blur-xl transition hover:bg-[var(--surface-strong)] active:scale-[0.99]"
+          >
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-[var(--muted)]">
+              {profile.is_head_coach ? "05" : "04"}
+            </p>
+
+            <h2 className="mt-5 text-3xl font-black">Configuración</h2>
+
+            <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
+              Cambia tu contraseña y mantén seguro el acceso a tu cuenta de
+              entrenador.
+            </p>
+          </Link>
         </div>
       </section>
     </main>

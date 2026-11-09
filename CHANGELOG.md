@@ -1,5 +1,16 @@
 # Historial de cambios
 
+## 0.3.1 — 2026-11-08
+
+### Mejoras
+- El perfil público de Sergio González incorpora su experiencia, formación, especialidades y medios de contacto con una presentación breve.
+- Sergio cuenta con planes exclusivos de entrenamiento en línea: mensual por $900 MXN, bimestral por $1,600 MXN y trimestral por $2,100 MXN.
+- Nuevo proceso seguro para crear o preparar cuentas reales de coach, con validación de permisos y contraseña temporal.
+- Los entrenadores pueden cambiar su contraseña desde la nueva sección **Configuración** de su dashboard.
+
+### Base de datos
+- No requiere ejecutar SQL adicional.
+
 ## 0.3.0 — 2026-10-16
 
 ### Mejoras

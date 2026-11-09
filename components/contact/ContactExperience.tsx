@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { getCoachPlans } from "@/lib/coach-plans";
 import { coaches, headCoach } from "@/lib/coaches";
 
 type ContactExperienceProps = {
@@ -27,6 +28,10 @@ export default function ContactExperience({
   );
 
   const firstName = getFirstName(selectedCoach.name);
+  const profilePlans =
+    selectedCoach.slug === "sergio-gonzales"
+      ? getCoachPlans(selectedCoach.slug)
+      : [];
   const selectedPlan =
     selectedCoach.slug === (initialCoachSlug ?? headCoach.slug)
       ? initialPlan
@@ -63,6 +68,154 @@ export default function ContactExperience({
       "noopener,noreferrer"
     );
   }
+
+  const contactCards = (
+    <div className="grid gap-3">
+      <a
+        href={directWhatsAppUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl transition hover:bg-[var(--surface-strong)]"
+      >
+        <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+          WhatsApp de {firstName}
+        </p>
+        <p className="mt-3 text-2xl font-black">
+          {selectedCoach.contact.phoneDisplay}
+        </p>
+      </a>
+
+      {selectedCoach.contact.instagram &&
+        selectedCoach.contact.instagramUrl && (
+          <a
+            href={selectedCoach.contact.instagramUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl transition hover:bg-[var(--surface-strong)]"
+          >
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+              Instagram
+            </p>
+            <p className="mt-3 text-2xl font-black">
+              {selectedCoach.contact.instagram}
+            </p>
+          </a>
+        )}
+
+      {selectedCoach.contact.email && (
+        <a
+          href={`mailto:${selectedCoach.contact.email}`}
+          className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl transition hover:bg-[var(--surface-strong)]"
+        >
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
+            Correo
+          </p>
+          <p className="mt-3 break-all text-lg font-black sm:text-xl">
+            {selectedCoach.contact.email}
+          </p>
+        </a>
+      )}
+    </div>
+  );
+
+  const plansSection = profilePlans.length > 0 && (
+    <section
+      aria-labelledby="sergio-plans-title"
+      className="mx-auto mt-16 max-w-7xl"
+    >
+      <div className="max-w-2xl">
+        <p className="text-xs font-black uppercase tracking-[0.3em] text-[var(--muted)]">
+          Planes de Sergio
+        </p>
+        <h2
+          id="sergio-plans-title"
+          className="mt-5 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl"
+        >
+          Entrenamiento en línea con seguimiento directo.
+        </h2>
+        <p className="mt-5 text-base leading-7 text-[var(--muted)]">
+          Elige la duración de tu proceso. Todos los planes se adaptan a tu
+          nivel, objetivos y equipo disponible.
+        </p>
+      </div>
+
+      <div className="mt-9 grid gap-4 lg:grid-cols-3">
+        {profilePlans.map((plan) => {
+          const planMessage = `Hola ${firstName}, vi tu perfil en Peak y me interesa el plan ${plan.name}. ¿Me puedes compartir más información?`;
+          const planUrl = `https://wa.me/${selectedCoach.contact.whatsapp}?text=${encodeURIComponent(
+            planMessage
+          )}`;
+
+          return (
+            <article
+              key={plan.name}
+              className={`rounded-[30px] border p-7 ${
+                plan.featured
+                  ? "border-[var(--text)] bg-[var(--button-bg)] text-[var(--button-text)]"
+                  : "border-[var(--border)] bg-[var(--surface)]"
+              }`}
+            >
+              {plan.featured && (
+                <p className="w-fit rounded-full bg-[var(--button-text)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--button-bg)]">
+                  Recomendado
+                </p>
+              )}
+              <p
+                className={`text-xs font-black uppercase tracking-[0.28em] ${
+                  plan.featured ? "mt-5 opacity-55" : "text-[var(--muted)]"
+                }`}
+              >
+                {plan.name}
+              </p>
+              <p className="mt-5 text-5xl font-black tracking-tight">
+                {plan.price}
+              </p>
+              <p
+                className={`mt-2 text-xs font-black uppercase tracking-[0.18em] ${
+                  plan.featured ? "opacity-55" : "text-[var(--muted)]"
+                }`}
+              >
+                {plan.period}
+              </p>
+              <p
+                className={`mt-5 text-sm leading-7 ${
+                  plan.featured ? "opacity-70" : "text-[var(--muted)]"
+                }`}
+              >
+                {plan.description}
+              </p>
+
+              <div className="mt-6 space-y-3">
+                {plan.features.map((feature) => (
+                  <p
+                    key={feature}
+                    className={`text-sm font-bold ${
+                      plan.featured ? "opacity-75" : "text-[var(--muted)]"
+                    }`}
+                  >
+                    ✓ {feature}
+                  </p>
+                ))}
+              </div>
+
+              <a
+                href={planUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`mt-7 flex items-center justify-center rounded-2xl px-5 py-4 text-center text-xs font-black uppercase tracking-[0.16em] transition active:scale-95 ${
+                  plan.featured
+                    ? "bg-[var(--button-text)] text-[var(--button-bg)]"
+                    : "bg-[var(--button-bg)] text-[var(--button-text)]"
+                }`}
+              >
+                Elegir plan
+              </a>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
 
   return (
     <main className="min-h-screen bg-[var(--bg)] px-5 pb-20 pt-32 text-[var(--text)] sm:px-8 lg:px-10">
@@ -119,8 +272,9 @@ export default function ContactExperience({
               })}
             </div>
           </div>
+        </div>
 
-          <div className="mt-5 rounded-[28px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl">
+        <div className="h-fit rounded-[28px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl">
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[var(--muted)]">
               Perfil de {firstName}
             </p>
@@ -155,41 +309,12 @@ export default function ContactExperience({
               </div>
             )}
           </div>
+      </section>
 
-          <div className="mt-5 grid gap-3">
-            <a
-              href={directWhatsAppUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl transition hover:bg-[var(--surface-strong)]"
-            >
-              <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
-                WhatsApp de {firstName}
-              </p>
-              <p className="mt-3 text-2xl font-black">
-                {selectedCoach.contact.phoneDisplay}
-              </p>
-            </a>
+      {plansSection}
 
-            {selectedCoach.contact.instagram &&
-              selectedCoach.contact.instagramUrl && (
-                <a
-                  href={selectedCoach.contact.instagramUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl transition hover:bg-[var(--surface-strong)]"
-                >
-                  <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--muted)]">
-                    Instagram
-                  </p>
-                  <p className="mt-3 text-2xl font-black">
-                    {selectedCoach.contact.instagram}
-                  </p>
-                </a>
-              )}
-          </div>
-        </div>
-
+      <section className="mx-auto mt-16 grid max-w-7xl gap-10 lg:grid-cols-[0.9fr_1.1fr]">
+        {contactCards}
         <form
           onSubmit={handleSubmit}
           className="h-fit rounded-[34px] border border-[var(--border)] bg-[var(--surface)] p-6 backdrop-blur-xl sm:p-8"
@@ -271,6 +396,7 @@ export default function ContactExperience({
           </div>
         </form>
       </section>
+
     </main>
   );
 }

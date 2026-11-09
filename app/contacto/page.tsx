@@ -1,5 +1,5 @@
 import ContactExperience from "@/components/contact/ContactExperience";
-import { coachPlans } from "@/lib/coach-plans";
+import { getCoachPlans } from "@/lib/coach-plans";
 import { getCoachBySlug } from "@/lib/coaches";
 
 type ContactPageProps = {
@@ -20,7 +20,9 @@ export default async function ContactoPage({ searchParams }: ContactPageProps) {
   const requestedPlan = Array.isArray(params.plan)
     ? params.plan[0]
     : params.plan;
-  const initialPlan = coachPlans.find(
+  const initialPlan = getCoachPlans(
+    initialCoach?.slug ?? "sebastian-gonzalez"
+  ).find(
     (plan) => plan.name === requestedPlan
   )?.name;
 

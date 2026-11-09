@@ -58,10 +58,13 @@ npm run seed:demo:reset
 
 ## Alta de un coach real
 
-1. Crea el usuario desde **Supabase → Authentication → Users** y confirma su correo.
-2. Verifica que exista una fila con el mismo `id` en `public.profiles`.
-3. En esa fila configura `role = 'coach'`, `full_name`, `coach_slug` y `whatsapp_phone` con código de país y sólo números.
-4. Deja `is_head_coach = false` e `is_demo = false`.
+Con la migración multi-entrenador activa, envía los datos públicos por `stdin` al script de alta. La contraseña temporal se genera en memoria, se muestra una sola vez y nunca se guarda en el repositorio:
+
+```powershell
+'{"email":"coach@ejemplo.com","full_name":"Nombre Coach","coach_slug":"nombre-coach","whatsapp_phone":"525500000000"}' | npm run coach:create
+```
+
+El script se niega a convertir cuentas cliente, demo o Head Coach. Una cuenta cliente sólo puede convertirse con `allow_client_conversion: true` y únicamente cuando no tiene registros de cliente vinculados; para entregar una contraseña nueva se requiere además `reset_password: true`. Si crea o restablece un acceso, también verifica el inicio de sesión y las políticas privadas antes de terminar. Comparte la contraseña temporal por un medio seguro; el entrenador puede reemplazarla desde **Dashboard Coach → Configuración**.
 
 Desde ese momento verá la biblioteca base de Sebastián. Todo ejercicio nuevo será privado y cualquier edición a un ejercicio base se guardará como una personalización que sólo verán ese coach y sus clientes.
 
